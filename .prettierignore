@@ -1,0 +1,14 @@
+# Ignore artifacts:
+build
+dist
+pnpm-lock.yaml
+
+# Ignore all HTML files:
+**/*.html
+
+# Ignore other config files:
+**/*.json
+.prettierrc
+.eslintrc.cjs
+src/vite-env.d.ts
+vite.config.ts
