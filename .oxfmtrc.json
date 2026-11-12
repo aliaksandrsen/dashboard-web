@@ -1,0 +1,17 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "singleQuote": true,
+  "printWidth": 80,
+  "sortPackageJson": true,
+  "ignorePatterns": [
+    "build",
+    "dist",
+    "pnpm-lock.yaml",
+    "**/*.html",
+    "**/*.json",
+    ".prettierrc",
+    ".eslintrc.cjs",
+    "src/vite-env.d.ts",
+    "vite.config.ts"
+  ]
+}
