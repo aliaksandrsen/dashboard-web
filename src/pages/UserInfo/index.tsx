@@ -1,3 +1,3 @@
-import UserInfo from './UserInfo.Container'
+import UserInfo from './UserInfo.Container';
 
-export default UserInfo
+export default UserInfo;
