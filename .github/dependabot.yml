@@ -1,0 +1,66 @@
+# To get started with Dependabot version updates, you'll need to specify which
+# package ecosystems to update and where the package manifests are located.
+# Please see the documentation for all configuration options:
+# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'daily'
+    open-pull-requests-limit: 10
+    cooldown:
+      default-days: 3
+      semver-major-days: 3
+      semver-minor-days: 1
+      semver-patch-days: 1
+    groups:
+      react:
+        patterns:
+          - 'react'
+          - 'react-dom'
+          - '@types/react'
+          - '@types/react-dom'
+          - 'react-router-dom'
+        update-types:
+          - 'minor'
+          - 'patch'
+      mui:
+        patterns:
+          - '@mui/*'
+          - '@emotion/*'
+          - 'styled-components'
+        update-types:
+          - 'minor'
+          - 'patch'
+      vite:
+        patterns:
+          - 'vite'
+          - '@vitejs/*'
+        update-types:
+          - 'minor'
+          - 'patch'
+      testing:
+        patterns:
+          - 'vitest'
+          - '@testing-library/*'
+          - 'jsdom'
+        update-types:
+          - 'minor'
+          - 'patch'
+      oxc:
+        patterns:
+          - 'oxlint'
+          - 'oxfmt'
+        update-types:
+          - 'minor'
+          - 'patch'
+
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'daily'
+    open-pull-requests-limit: 10
+    cooldown:
+      default-days: 1
