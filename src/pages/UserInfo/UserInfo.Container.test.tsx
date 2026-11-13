@@ -13,5 +13,7 @@ describe('<UserInfo />', () => {
     ui();
 
     expect(screen.getByText('Search bar')).toBeDefined();
+    expect(screen.getByText('Some Body')).toBeDefined();
+    expect(screen.getByText('Fancy soap')).toBeDefined();
   });
 });
