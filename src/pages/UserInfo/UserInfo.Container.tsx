@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
+import Alert from '@mui/material/Alert';
+import CircularProgress from '@mui/material/CircularProgress';
 import styled from 'styled-components';
 import { useSnapshot } from 'valtio';
-import { type Order, OrderStatus, orderStore, updateOrders } from './UserInfo.State';
+import { orderStore, updateOrders, updateUser, userStore } from './UserInfo.State';
+import useUserInfo from './useUserInfo';
 
 const Container = styled.div`
   background-color: white;
@@ -9,63 +12,47 @@ const Container = styled.div`
   width: 100%;
 `;
 
-export interface UserInfo {
-  name: string;
-  joinedDate: string;
-  recentOrders: number;
-  newProducts: number;
-  nextDeliveryDate: string;
-}
-
-const initialUserInfo: UserInfo = {
-  name: '',
-  joinedDate: '',
-  recentOrders: 0,
-  newProducts: 0,
-  nextDeliveryDate: '',
-};
-
-const orderResponseData: Order[] = [
-  {
-    id: 'db4be77c-cd14-441a-8ae1-35e0c037a842',
-    productName: 'Fancy soap',
-    status: OrderStatus.Shipped,
-    orderedDate: '06/24/2025',
-    deliveryDate: '06/27/2025',
-    totalAmount: 400,
-    hasBeenReviewed: true,
-  },
-];
-
-const userResponseData: UserInfo = {
-  name: 'Some Body',
-  joinedDate: '10/21/2002',
-  recentOrders: 2,
-  newProducts: 6,
-  nextDeliveryDate: '07/27/2025',
-};
-
 const UserInfo = () => {
   const orderSnap = useSnapshot(orderStore);
-  const [userInfo, setUserInfo] = useState<UserInfo>(initialUserInfo);
+  const userSnap = useSnapshot(userStore);
+
+  const { orderData, ordersAreLoading, ordersErrors, userData, userIsLoading, userErrors } =
+    useUserInfo();
 
   useEffect(() => {
-    // Получаем информацию о пользователе и заказы с бэкенда
-    // oxlint-disable-next-line react/set-state-in-effect
-    setUserInfo(userResponseData);
-    updateOrders(orderResponseData);
-  }, []);
+    if (orderData) {
+      updateOrders(orderData);
+    }
+  }, [orderData]);
+
+  useEffect(() => {
+    if (userData) {
+      updateUser(userData);
+    }
+  }, [userData]);
+
+  if (userErrors || ordersErrors) {
+    return <Alert severity="error">Something went wrong</Alert>;
+  }
 
   return (
     <Container>
       <div>
-        <div>{userInfo.name}</div>
+        {userIsLoading ? (
+          <CircularProgress data-testid="user-loading-circle" />
+        ) : (
+          <div>{userSnap.user.name}</div>
+        )}
         <div>Search bar</div>
-        <div>
-          {orderSnap.orders.map((order) => (
-            <div key={order.id}>{order.productName}</div>
-          ))}
-        </div>
+        {ordersAreLoading ? (
+          <CircularProgress color="secondary" data-testid="orders-loading-circle" />
+        ) : (
+          <div>
+            {orderSnap.orders.map((order) => (
+              <div key={order.id}>{order.productName}</div>
+            ))}
+          </div>
+        )}
       </div>
     </Container>
   );
