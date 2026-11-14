@@ -18,6 +18,14 @@ export interface Order {
   hasBeenReviewed: boolean;
 }
 
+export interface UserInfoData {
+  name: string;
+  joinedDate: string;
+  recentOrders: number;
+  newProducts: number;
+  nextDeliveryDate: string;
+}
+
 export const orderStore = proxy<{
   filter: OrderStatusKeys | undefined;
   orders: Order[];
@@ -26,10 +34,26 @@ export const orderStore = proxy<{
   orders: [],
 });
 
+export const userStore = proxy<{
+  user: UserInfoData;
+}>({
+  user: {
+    name: '',
+    joinedDate: '',
+    recentOrders: 0,
+    newProducts: 0,
+    nextDeliveryDate: '',
+  },
+});
+
 export const updateOrders = (updatedOrders: Order[]) => {
   orderStore.orders = updatedOrders;
 };
 
 export const changeFilter = (newFilter: OrderStatusKeys | undefined) => {
   orderStore.filter = newFilter;
+};
+
+export const updateUser = (updatedUser: UserInfoData) => {
+  userStore.user = updatedUser;
 };

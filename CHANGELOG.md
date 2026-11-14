@@ -7,3 +7,4 @@
 - Created folder structure
 - Added initial UserInfo page, routing, and theme configuration
 - Added Valtio state management with order store
+- Added Axios configuration and TanStack Query data fetching for user info and orders
