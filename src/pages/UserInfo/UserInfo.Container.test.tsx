@@ -1,5 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import axe from 'axe-core';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import UserInfo from '.';
 import {
   type Order,
@@ -62,11 +63,12 @@ describe('<UserInfo />', () => {
     vi.clearAllMocks();
   });
 
-  it('should render the user info screen with fetched data', async () => {
+  it('should render the user info screen with Header and fetched data', async () => {
     ui();
 
-    expect(screen.getByText('Search bar')).toBeDefined();
+    expect(screen.getByPlaceholderText('Search products...')).toBeDefined();
     expect(await screen.findByText('Some Body')).toBeDefined();
+    expect(await screen.findByText('Customer since 2002')).toBeDefined();
     expect(await screen.findByText('Fancy soap')).toBeDefined();
   });
 
@@ -99,5 +101,16 @@ describe('<UserInfo />', () => {
     ui();
 
     expect(screen.getByRole('alert').textContent).toBe('Something went wrong');
+  });
+
+  it('should have no axe accessibility violations', async () => {
+    const { container } = ui();
+    await screen.findByText('Some Body');
+
+    const results = await axe.run(container, {
+      rules: { 'color-contrast': { enabled: false } },
+    });
+
+    expect(results.violations).toEqual([]);
   });
 });
