@@ -1,6 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
-import type { Order, UserInfoData } from './UserInfo.State';
+import {
+  type Order,
+  type UserInfoData,
+  normalizeOrdersData,
+  normalizeUserData,
+} from './UserInfo.State';
 
 export const isServerError = (error: unknown): boolean =>
   axios.isAxiosError(error) && (error.response?.status ?? 0) >= 500;
@@ -13,7 +18,9 @@ function useUserInfo() {
     refetch: refetchOrders,
   } = useQuery<Order[]>({
     queryKey: ['orderData'],
-    queryFn: () => axios.get<Order[]>('/v1/orders').then((res) => res.data),
+    staleTime: 300_000,
+    gcTime: 3_600_000,
+    queryFn: () => axios.get<unknown>('/v1/orders').then((res) => normalizeOrdersData(res.data)),
     throwOnError: isServerError,
   });
 
@@ -24,7 +31,9 @@ function useUserInfo() {
     refetch: refetchUser,
   } = useQuery<UserInfoData>({
     queryKey: ['userData'],
-    queryFn: () => axios.get<UserInfoData>('/v1/users').then((res) => res.data),
+    staleTime: 300_000,
+    gcTime: 3_600_000,
+    queryFn: () => axios.get<unknown>('/v1/users').then((res) => normalizeUserData(res.data)),
     throwOnError: isServerError,
   });
 

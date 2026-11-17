@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import axe from 'axe-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import UserInfo from '.';
@@ -7,6 +7,7 @@ import {
   OrderStatus,
   type UserInfoData,
   orderStore,
+  productStore,
   userStore,
 } from './UserInfo.State';
 
@@ -43,6 +44,10 @@ const ui = () => render(<UserInfo />);
 describe('<UserInfo />', () => {
   beforeEach(() => {
     orderStore.orders = [];
+    orderStore.filter = undefined;
+    orderStore.searchQuery = '';
+    productStore.products = [];
+    productStore.search = '';
     userStore.user = {
       name: '',
       joinedDate: '',
@@ -67,13 +72,22 @@ describe('<UserInfo />', () => {
     vi.clearAllMocks();
   });
 
-  it('should render the user info screen with Header and fetched data', async () => {
+  it('should render the user info screen with Header, summary metrics, orders table, and sidebar previews', async () => {
     ui();
 
     expect(screen.getByPlaceholderText('Search products...')).toBeDefined();
     expect(await screen.findByText('Some Body')).toBeDefined();
     expect(await screen.findByText('Customer since 2002')).toBeDefined();
-    expect(await screen.findByText('Fancy soap')).toBeDefined();
+
+    const ordersTable = await screen.findByRole('table', { name: 'orders-table' });
+    expect(within(ordersTable).getByText('Fancy soap')).toBeDefined();
+
+    expect(screen.getByText('In the last 30 days,')).toBeDefined();
+    expect(screen.getByText('orders made')).toBeDefined();
+    expect(screen.getByText('New products')).toBeDefined();
+    expect(screen.getByText('Next delivery date')).toBeDefined();
+    expect(screen.getByText('Recent orders')).toBeDefined();
+    expect(screen.getByText('Related products')).toBeDefined();
   });
 
   it('should render loading indicators independently for user and orders', () => {
@@ -130,7 +144,8 @@ describe('<UserInfo />', () => {
 
     ui();
 
-    expect(await screen.findByText('Fancy soap')).toBeDefined();
+    const ordersTable = await screen.findByRole('table', { name: 'orders-table' });
+    expect(within(ordersTable).getByText('Fancy soap')).toBeDefined();
     const alert = screen.getByRole('alert');
     expect(alert.textContent).toContain('Failed to load user info');
 

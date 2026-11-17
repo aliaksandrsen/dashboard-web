@@ -1,25 +1,74 @@
 import { useState } from 'react';
-import { Box, Button, Drawer } from '@mui/material';
-import { Link } from 'react-router-dom';
+import GridViewRoundedIcon from '@mui/icons-material/GridViewRounded';
+import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
+import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
+import PersonOutlineRoundedIcon from '@mui/icons-material/PersonOutlineRounded';
+import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
+import { Box, Button, Drawer, Typography } from '@mui/material';
+import { Link, useLocation } from 'react-router-dom';
 import styled from 'styled-components';
+
+const SidebarInner = styled.div`
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 24px 16px;
+  box-sizing: border-box;
+`;
+
+const BrandTitle = styled(Typography)`
+  font-weight: 700;
+  font-size: 1.375rem;
+  color: #374151;
+  padding: 0 12px 24px;
+  letter-spacing: -0.02em;
+`;
+
+const Nav = styled.nav`
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex: 1;
+`;
 
 const NavList = styled.ul`
   list-style: none;
   margin: 0;
-  padding: 24px 16px;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 `;
 
 const NavLink = styled(Link)`
-  color: inherit;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  color: #4b5563;
   text-decoration: none;
   font-weight: 500;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
 
   &:hover,
   &:focus-visible {
-    text-decoration: underline;
+    background-color: #e5e7eb;
+    color: #111827;
+  }
+
+  &:focus-visible {
+    outline: 2px solid #0b57d0;
+    outline-offset: 2px;
+  }
+
+  &[aria-current='page'] {
+    background-color: #6b7280;
+    color: #ffffff;
+    font-weight: 600;
+    border-left: 4px solid #1f2937;
   }
 `;
 
@@ -27,40 +76,69 @@ const MobileToggleButton = styled(Button)`
   margin: 8px;
 `;
 
-const navContent = (onNavigate?: () => void) => (
-  <nav aria-label="Main navigation">
-    <NavList>
-      <li>
-        <NavLink to="/" onClick={onNavigate}>
-          Orders
-        </NavLink>
-      </li>
-      <li>
-        <NavLink to="/actions" onClick={onNavigate}>
-          Actions
-        </NavLink>
-      </li>
-      <li>
-        <NavLink to="/" onClick={onNavigate}>
-          Products
-        </NavLink>
-      </li>
-      <li>
-        <NavLink to="/" onClick={onNavigate}>
-          Settings
-        </NavLink>
-      </li>
-      <li>
-        <NavLink to="/" onClick={onNavigate}>
-          Logout
-        </NavLink>
-      </li>
-    </NavList>
-  </nav>
+const handleLogoutClick = (onNavigate?: () => void) => {
+  localStorage.removeItem('dashboard_web_auth');
+  onNavigate?.();
+};
+
+const NavContent = ({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) => (
+  <SidebarInner>
+    <BrandTitle variant="h6">TestsTore</BrandTitle>
+    <Nav aria-label="Main navigation">
+      <NavList>
+        <li>
+          <NavLink to="/" aria-current={pathname === '/' ? 'page' : undefined} onClick={onNavigate}>
+            <GridViewRoundedIcon fontSize="small" aria-hidden="true" />
+            <span>Orders</span>
+          </NavLink>
+        </li>
+        <li>
+          <NavLink
+            to="/actions"
+            aria-current={pathname === '/actions' ? 'page' : undefined}
+            onClick={onNavigate}
+          >
+            <PersonOutlineRoundedIcon fontSize="small" aria-hidden="true" />
+            <span>Actions</span>
+          </NavLink>
+        </li>
+        <li>
+          <NavLink
+            to="/products"
+            aria-current={pathname === '/products' ? 'page' : undefined}
+            onClick={onNavigate}
+          >
+            <Inventory2OutlinedIcon fontSize="small" aria-hidden="true" />
+            <span>Products</span>
+          </NavLink>
+        </li>
+      </NavList>
+
+      <NavList>
+        <li>
+          <NavLink
+            to="/settings"
+            aria-current={pathname === '/settings' ? 'page' : undefined}
+            onClick={onNavigate}
+          >
+            <SettingsOutlinedIcon fontSize="small" aria-hidden="true" />
+            <span>Settings</span>
+          </NavLink>
+        </li>
+        <li>
+          <NavLink to="/settings?loggedOut=true" onClick={() => handleLogoutClick(onNavigate)}>
+            <LogoutRoundedIcon fontSize="small" aria-hidden="true" />
+            <span>Logout</span>
+          </NavLink>
+        </li>
+      </NavList>
+    </Nav>
+  </SidebarInner>
 );
 
 const NavBar = () => {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const { pathname } = useLocation();
 
   const toggleMobileNav = () => setIsMobileOpen((prev) => !prev);
   const closeMobileNav = () => setIsMobileOpen(false);
@@ -84,11 +162,11 @@ const NavBar = () => {
         ModalProps={{ keepMounted: false }}
         sx={{ display: { xs: 'block', sm: 'none' } }}
       >
-        {navContent(closeMobileNav)}
+        <NavContent pathname={pathname} onNavigate={closeMobileNav} />
       </Drawer>
 
       <Drawer anchor="left" variant="permanent" open sx={{ display: { xs: 'none', sm: 'block' } }}>
-        {navContent()}
+        <NavContent pathname={pathname} />
       </Drawer>
     </Box>
   );
