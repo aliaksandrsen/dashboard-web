@@ -1,12 +1,22 @@
 import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
-import axios from 'axios';
+import axios, { AxiosError, type AxiosResponse } from 'axios';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OrderStatus } from './UserInfo.State';
-import useUserInfo from './useUserInfo';
+import useUserInfo, { isServerError } from './useUserInfo';
 
-vi.mock('axios');
+vi.mock('axios', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('axios')>();
+  return {
+    ...actual,
+    default: {
+      ...actual.default,
+      get: vi.fn(),
+      isAxiosError: actual.default.isAxiosError,
+    },
+  };
+});
 
 const createWrapper = () => {
   const queryClient = new QueryClient({
@@ -70,5 +80,22 @@ describe('useUserInfo', () => {
     expect(result.current.userData).toEqual(mockUser);
     expect(result.current.ordersErrors).toBeNull();
     expect(result.current.userErrors).toBeNull();
+  });
+
+  it('identifies 5xx Axios errors for ErrorBoundary propagation', () => {
+    const serverError = new AxiosError(
+      'Internal Server Error',
+      'ERR_BAD_RESPONSE',
+      undefined,
+      undefined,
+      { status: 500 } as AxiosResponse,
+    );
+    const clientError = new AxiosError('Not Found', 'ERR_BAD_REQUEST', undefined, undefined, {
+      status: 404,
+    } as AxiosResponse);
+
+    expect(isServerError(serverError)).toBe(true);
+    expect(isServerError(clientError)).toBe(false);
+    expect(isServerError(new Error('Generic error'))).toBe(false);
   });
 });

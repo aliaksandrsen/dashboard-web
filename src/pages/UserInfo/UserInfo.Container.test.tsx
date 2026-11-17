@@ -1,9 +1,7 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import axe from 'axe-core';
-import { ErrorBoundary } from 'react-error-boundary';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import UserInfo from '.';
-import { ErrorFallback } from '../../components/ErrorFallbacks';
 import {
   type Order,
   OrderStatus,
@@ -13,6 +11,8 @@ import {
 } from './UserInfo.State';
 
 const mockUseUserInfo = vi.fn();
+const mockRefetchOrders = vi.fn();
+const mockRefetchUser = vi.fn();
 
 vi.mock('./useUserInfo', () => ({
   default: () => mockUseUserInfo(),
@@ -38,12 +38,7 @@ const userResponseData: UserInfoData = {
   nextDeliveryDate: '07/27/2025',
 };
 
-const ui = () =>
-  render(
-    <ErrorBoundary FallbackComponent={ErrorFallback}>
-      <UserInfo />
-    </ErrorBoundary>,
-  );
+const ui = () => render(<UserInfo />);
 
 describe('<UserInfo />', () => {
   beforeEach(() => {
@@ -60,9 +55,11 @@ describe('<UserInfo />', () => {
       ordersAreLoading: false,
       ordersErrors: null,
       orderData: orderResponseData,
+      refetchOrders: mockRefetchOrders,
       userIsLoading: false,
       userErrors: null,
       userData: userResponseData,
+      refetchUser: mockRefetchUser,
     });
   });
 
@@ -84,9 +81,11 @@ describe('<UserInfo />', () => {
       ordersAreLoading: true,
       ordersErrors: null,
       orderData: undefined,
+      refetchOrders: mockRefetchOrders,
       userIsLoading: true,
       userErrors: null,
       userData: undefined,
+      refetchUser: mockRefetchUser,
     });
 
     ui();
@@ -95,25 +94,48 @@ describe('<UserInfo />', () => {
     expect(screen.getByTestId('orders-loading-circle')).toBeDefined();
   });
 
-  it('should display ErrorFallback via ErrorBoundary when fetching data fails', async () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
+  it('should render isolated error alert with retry when orders fail while keeping Header functional', async () => {
     mockUseUserInfo.mockReturnValue({
       ordersAreLoading: false,
       ordersErrors: new Error('Network error'),
       orderData: undefined,
+      refetchOrders: mockRefetchOrders,
       userIsLoading: false,
       userErrors: null,
-      userData: undefined,
+      userData: userResponseData,
+      refetchUser: mockRefetchUser,
     });
 
     ui();
 
-    const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toContain('Something weird happened');
-    expect(alert.textContent).toContain('Network error');
+    expect(await screen.findByText('Some Body')).toBeDefined();
+    const alert = screen.getByRole('alert');
+    expect(alert.textContent).toContain('Failed to load orders');
 
-    consoleErrorSpy.mockRestore();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(mockRefetchOrders).toHaveBeenCalledTimes(1);
+  });
+
+  it('should render isolated error alert with retry when user info fails while keeping orders visible', async () => {
+    mockUseUserInfo.mockReturnValue({
+      ordersAreLoading: false,
+      ordersErrors: null,
+      orderData: orderResponseData,
+      refetchOrders: mockRefetchOrders,
+      userIsLoading: false,
+      userErrors: new Error('Network error'),
+      userData: undefined,
+      refetchUser: mockRefetchUser,
+    });
+
+    ui();
+
+    expect(await screen.findByText('Fancy soap')).toBeDefined();
+    const alert = screen.getByRole('alert');
+    expect(alert.textContent).toContain('Failed to load user info');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(mockRefetchUser).toHaveBeenCalledTimes(1);
   });
 
   it('should have no axe accessibility violations', async () => {
