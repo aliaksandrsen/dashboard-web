@@ -41,9 +41,15 @@ const SearchBar = (props: SearchBarProps) => {
   const inputId = `${name}-search`;
   const errorId = `${name}-search-error`;
   const { ref, ...searchRegisterProps } = register('search', {
-    required: true,
-    minLength: 3,
-    maxLength: 15,
+    required: 'Please enter a search term',
+    minLength: {
+      value: 3,
+      message: 'Search text must be at least 3 characters',
+    },
+    maxLength: {
+      value: 15,
+      message: 'Search text must be at most 15 characters',
+    },
   });
 
   return (
@@ -64,6 +70,7 @@ const SearchBar = (props: SearchBarProps) => {
           input: {
             maxLength: 15,
             minLength: 3,
+            required: true,
             'aria-invalid': errors.search ? 'true' : 'false',
             ...(errors.search ? { 'aria-describedby': errorId } : {}),
           },
@@ -77,7 +84,7 @@ const SearchBar = (props: SearchBarProps) => {
       />
       {errors.search && (
         <ErrorMessage id={errorId} role="alert">
-          Search text must be between 3 and 15 characters
+          {errors.search.message}
         </ErrorMessage>
       )}
     </FullWidthForm>

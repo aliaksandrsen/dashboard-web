@@ -9,3 +9,4 @@
 - Added Valtio state management with order store
 - Added Axios configuration and TanStack Query data fetching for user info and orders
 - Added custom theme overrides, responsive layout, Header, NavBar, accessible SearchBar with React Hook Form, and axe-core accessibility tests
+- Added application and layout ErrorBoundary handling, ErrorFallback UI, error logging helper, and enhanced search validation messages

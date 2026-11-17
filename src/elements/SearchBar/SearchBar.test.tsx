@@ -33,8 +33,18 @@ describe('<SearchBar />', () => {
     fireEvent.submit(screen.getByRole('form', { name: 'products search form' }));
 
     const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toBe('Search text must be between 3 and 15 characters');
+    expect(alert.textContent).toBe('Search text must be at least 3 characters');
     expect(input.getAttribute('aria-invalid')).toBe('true');
+    expect(mocks.onSubmitSearch).not.toHaveBeenCalled();
+  });
+
+  it('should show required error when submitting an empty search field', async () => {
+    ui();
+
+    fireEvent.submit(screen.getByRole('form', { name: 'products search form' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBe('Please enter a search term');
     expect(mocks.onSubmitSearch).not.toHaveBeenCalled();
   });
 

@@ -1,7 +1,9 @@
 import { render, screen } from '@testing-library/react';
 import axe from 'axe-core';
+import { ErrorBoundary } from 'react-error-boundary';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import UserInfo from '.';
+import { ErrorFallback } from '../../components/ErrorFallbacks';
 import {
   type Order,
   OrderStatus,
@@ -36,7 +38,12 @@ const userResponseData: UserInfoData = {
   nextDeliveryDate: '07/27/2025',
 };
 
-const ui = () => render(<UserInfo />);
+const ui = () =>
+  render(
+    <ErrorBoundary FallbackComponent={ErrorFallback}>
+      <UserInfo />
+    </ErrorBoundary>,
+  );
 
 describe('<UserInfo />', () => {
   beforeEach(() => {
@@ -88,7 +95,9 @@ describe('<UserInfo />', () => {
     expect(screen.getByTestId('orders-loading-circle')).toBeDefined();
   });
 
-  it('should render error alert when fetching data fails', () => {
+  it('should display ErrorFallback via ErrorBoundary when fetching data fails', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
     mockUseUserInfo.mockReturnValue({
       ordersAreLoading: false,
       ordersErrors: new Error('Network error'),
@@ -100,7 +109,11 @@ describe('<UserInfo />', () => {
 
     ui();
 
-    expect(screen.getByRole('alert').textContent).toBe('Something went wrong');
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Something weird happened');
+    expect(alert.textContent).toContain('Network error');
+
+    consoleErrorSpy.mockRestore();
   });
 
   it('should have no axe accessibility violations', async () => {
