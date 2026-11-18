@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useContext, useEffect, useId, useMemo, useState } from 'react';
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
@@ -7,11 +7,13 @@ import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
+import { QueryClientContext } from '@tanstack/react-query';
 import axios from 'axios';
 import { useForm } from 'react-hook-form';
 import styled from 'styled-components';
 import { useSnapshot } from 'valtio';
 import Header from '../../components/Header';
+import SafeLink from '../../components/SafeLink';
 import { useProducts } from '../../hooks/useProducts';
 import { formatCurrency, formatShortDate } from '../../utils/helpers';
 import {
@@ -28,11 +30,13 @@ interface CreateProductValues {
   name: string;
   price: number;
   description: string;
+  stripeProductId: string;
 }
 
 interface EditProductValues {
   name: string;
   price: number;
+  stripeProductId: string;
 }
 
 interface CheckoutFormValues {
@@ -117,10 +121,17 @@ const ProductMeta = styled.div`
   gap: 4px;
 `;
 
-const ProductName = styled.span`
+const ProductNameLink = styled(SafeLink)`
   font-weight: 600;
   font-size: 1rem;
   color: #111827;
+  text-decoration: none;
+
+  &:hover,
+  &:focus-visible {
+    text-decoration: underline;
+    color: #0b57d0;
+  }
 `;
 
 const ProductSubtext = styled.span`
@@ -176,6 +187,7 @@ const ErrorText = styled.span`
 const Products = () => {
   const userSnap = useSnapshot(userStore);
   const productSnap = useSnapshot(productStore);
+  const queryClient = useContext(QueryClientContext);
   const idPrefix = useId();
   const [statusBanner, setStatusBanner] = useState<{
     type: 'success' | 'error' | 'info';
@@ -202,6 +214,15 @@ const Products = () => {
     }
   }, [productsData]);
 
+  // Client-side filter complements server search in case NestJS CacheKey('products') serves cached list
+  const visibleProducts = useMemo(() => {
+    const q = productSnap.search.trim().toLowerCase();
+    if (!q) {
+      return productSnap.products;
+    }
+    return productSnap.products.filter((product) => product.name.toLowerCase().includes(q));
+  }, [productSnap.products, productSnap.search]);
+
   const {
     register: registerCreate,
     handleSubmit: handleCreateSubmit,
@@ -209,7 +230,7 @@ const Products = () => {
     formState: { errors: createErrors, isSubmitting: isCreating },
   } = useForm<CreateProductValues>({
     mode: 'onBlur',
-    defaultValues: { name: '', price: 49.99, description: '' },
+    defaultValues: { name: '', price: 49.99, description: '', stripeProductId: '' },
   });
 
   const {
@@ -219,13 +240,12 @@ const Products = () => {
     formState: { errors: editErrors, isSubmitting: isUpdating },
   } = useForm<EditProductValues>({
     mode: 'onBlur',
-    defaultValues: { name: '', price: 0 },
+    defaultValues: { name: '', price: 0, stripeProductId: '' },
   });
 
   const {
     register: registerCheckout,
     handleSubmit: handleCheckoutSubmit,
-    setValue: setCheckoutValue,
     setFocus: setCheckoutFocus,
     formState: { errors: checkoutErrors, isSubmitting: isCheckingOut },
   } = useForm<CheckoutFormValues>({
@@ -235,17 +255,20 @@ const Products = () => {
 
   const onCreateProduct = async (values: CreateProductValues) => {
     setStatusBanner(null);
+    const trimmedStripeId = values.stripeProductId.trim();
     try {
       await axios.post('/v1/products', {
-        name: values.name,
+        name: values.name.trim(),
         price: Number(values.price),
         ...(values.description.trim() ? { description: values.description.trim() } : {}),
+        ...(trimmedStripeId ? { stripeProductId: trimmedStripeId } : {}),
       });
+      await queryClient?.invalidateQueries({ queryKey: ['productsData'] });
       await refetchProducts();
       resetCreateForm();
       setStatusBanner({
         type: 'success',
-        text: `Product "${values.name}" created in Stripe and database.`,
+        text: `Product "${values.name}" created successfully.`,
       });
     } catch (error) {
       const message = axios.isAxiosError(error)
@@ -260,22 +283,36 @@ const Products = () => {
 
   const openEditDialog = (product: ProductItem) => {
     setEditingProduct(product);
-    resetEditForm({ name: product.name, price: product.price });
+    resetEditForm({
+      name: product.name,
+      price: product.price,
+      stripeProductId: product.stripeProductId ?? '',
+    });
   };
 
   const onSaveEditProduct = async (values: EditProductValues) => {
     if (!editingProduct) return;
     setStatusBanner(null);
+    const trimmedStripeId = values.stripeProductId.trim();
     try {
       await axios.patch(`/v1/products/${editingProduct.id}`, {
-        name: values.name,
+        name: values.name.trim(),
         price: Number(values.price),
+        ...(trimmedStripeId ? { stripeProductId: trimmedStripeId } : {}),
       });
+      await queryClient?.invalidateQueries({ queryKey: ['productsData'] });
+      await queryClient?.invalidateQueries({ queryKey: ['product', editingProduct.id] });
       await refetchProducts();
       setStatusBanner({ type: 'success', text: `Updated product "${values.name}".` });
       setEditingProduct(null);
-    } catch {
-      setStatusBanner({ type: 'error', text: 'Failed to update product.' });
+    } catch (error) {
+      const message = axios.isAxiosError(error)
+        ? (error.response?.data?.message ?? 'Failed to update product.')
+        : 'Failed to update product.';
+      setStatusBanner({
+        type: 'error',
+        text: Array.isArray(message) ? message.join(', ') : String(message),
+      });
     }
   };
 
@@ -283,6 +320,8 @@ const Products = () => {
     setStatusBanner(null);
     try {
       await axios.delete(`/v1/products/${product.id}`);
+      await queryClient?.invalidateQueries({ queryKey: ['productsData'] });
+      await queryClient?.invalidateQueries({ queryKey: ['orderData'] });
       await refetchProducts();
       setStatusBanner({ type: 'success', text: `Deleted product "${product.name}".` });
     } catch {
@@ -299,6 +338,7 @@ const Products = () => {
         result: { processed: number; created: number; skipped: number };
       }>('/v1/jobs/sync-stripe', {});
       const { processed, created, skipped } = res.data.result;
+      await queryClient?.invalidateQueries({ queryKey: ['orderData'] });
       setStatusBanner({
         type: 'success',
         text: `${res.data.message} (processed: ${processed}, created: ${created}, skipped: ${skipped})`,
@@ -322,31 +362,34 @@ const Products = () => {
       });
       setStatusBanner({
         type: 'success',
-        text: 'Stripe checkout session created.',
+        text: 'Stripe checkout session initiated.',
       });
-    } catch {
+    } catch (error) {
+      const msg = axios.isAxiosError(error)
+        ? (error.response?.data?.message ??
+          'Stripe checkout request failed or redirected externally.')
+        : 'Stripe checkout request failed.';
       setStatusBanner({
         type: 'error',
-        text: 'Could not start Stripe Checkout session. Verify the Stripe Price ID.',
+        text: Array.isArray(msg) ? msg.join(', ') : String(msg),
       });
     }
   };
 
   const handlePrepareCheckout = (product: ProductItem) => {
     setSelectedCheckoutName(product.name);
-    if (product.stripeProductId) {
-      setCheckoutValue('priceId', '');
-    }
     setCheckoutFocus('priceId');
   };
 
   const nameInputId = `${idPrefix}-product-name`;
   const priceInputId = `${idPrefix}-product-price`;
   const descInputId = `${idPrefix}-product-description`;
+  const stripeProdInputId = `${idPrefix}-product-stripe-id`;
   const checkoutPriceId = `${idPrefix}-checkout-price-id`;
   const checkoutQtyId = `${idPrefix}-checkout-qty`;
   const editNameId = `${idPrefix}-edit-name`;
   const editPriceId = `${idPrefix}-edit-price`;
+  const editStripeId = `${idPrefix}-edit-stripe`;
 
   return (
     <Container component="section" maxWidth="xl">
@@ -380,7 +423,14 @@ const Products = () => {
         )}
 
         {productSnap.search && (
-          <Alert severity="info" onClose={() => changeProductSearch('')}>
+          <Alert
+            severity="info"
+            action={
+              <Button size="small" onClick={() => changeProductSearch('')}>
+                Clear
+              </Button>
+            }
+          >
             Showing results for: {productSnap.search}
           </Alert>
         )}
@@ -401,16 +451,18 @@ const Products = () => {
               >
                 Failed to load products
               </Alert>
-            ) : productSnap.products.length === 0 ? (
+            ) : visibleProducts.length === 0 ? (
               <ProductSubtext>
-                No products found in the catalog yet. Use the form to create your first product.
+                No products match your filter. Use the form to create a product or clear search.
               </ProductSubtext>
             ) : (
               <ProductList>
-                {productSnap.products.map((product) => (
+                {visibleProducts.map((product) => (
                   <ProductCard key={product.id}>
                     <ProductMeta>
-                      <ProductName>{product.name}</ProductName>
+                      <ProductNameLink to={`/products/${product.id}`}>
+                        {product.name}
+                      </ProductNameLink>
                       <ProductSubtext>
                         {formatCurrency(product.price)} ·{' '}
                         {product.createdAt ? formatShortDate(product.createdAt) : 'Active'}
@@ -418,6 +470,14 @@ const Products = () => {
                       </ProductSubtext>
                     </ProductMeta>
                     <CardActions>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        component={SafeLink}
+                        to={`/products/${product.id}`}
+                      >
+                        Details
+                      </Button>
                       <Button
                         size="small"
                         variant="outlined"
@@ -497,12 +557,25 @@ const Products = () => {
                 </FieldGroup>
 
                 <FieldGroup>
-                  <FieldLabel htmlFor={descInputId}>Description</FieldLabel>
+                  <FieldLabel htmlFor={descInputId}>Description (optional)</FieldLabel>
                   <StyledInput
                     id={descInputId}
                     type="text"
                     aria-invalid="false"
                     {...registerCreate('description')}
+                  />
+                </FieldGroup>
+
+                <FieldGroup>
+                  <FieldLabel htmlFor={stripeProdInputId}>
+                    Stripe Product ID (optional, skips Stripe creation)
+                  </FieldLabel>
+                  <StyledInput
+                    id={stripeProdInputId}
+                    type="text"
+                    placeholder="prod_..."
+                    aria-invalid="false"
+                    {...registerCreate('stripeProductId')}
                   />
                 </FieldGroup>
 
@@ -566,7 +639,7 @@ const Products = () => {
                 </FieldGroup>
 
                 <Button type="submit" variant="contained" disabled={isCheckingOut}>
-                  {isCheckingOut ? 'Redirecting...' : 'Pay with Stripe'}
+                  {isCheckingOut ? 'Processing...' : 'Pay with Stripe'}
                 </Button>
               </FormStack>
             </Panel>
@@ -610,6 +683,17 @@ const Products = () => {
                 })}
               />
               {editErrors.price && <ErrorText>{editErrors.price.message}</ErrorText>}
+            </FieldGroup>
+
+            <FieldGroup>
+              <FieldLabel htmlFor={editStripeId}>Stripe Product ID (optional)</FieldLabel>
+              <StyledInput
+                id={editStripeId}
+                type="text"
+                placeholder="prod_..."
+                aria-invalid="false"
+                {...registerEdit('stripeProductId')}
+              />
             </FieldGroup>
           </DialogContent>
           <DialogActions>

@@ -1,6 +1,6 @@
 # Dashboard UI (`TestsTore`)
 
-Full-stack React + TypeScript dashboard frontend built from the _Full-Stack JavaScript Strategies_ Figma designs and connected to the NestJS backend (`dashboard-server`).
+Full-stack React + TypeScript dashboard frontend connected to the NestJS backend (`dashboard-server`).
 
 ## How to run locally
 
@@ -15,13 +15,17 @@ The app runs on `http://localhost:5173/`.
 ## Scripts
 
 - `pnpm test` — run Vitest + Testing Library + `axe-core` accessibility tests
+- `pnpm test:coverage` — run Vitest suite with V8 coverage report (`coverage/`)
+- `pnpm test:e2e` — run Playwright end-to-end tests (`e2e/`, requires `dashboard-server` running on `http://localhost:3000`)
 - `pnpm lint` — run Oxlint static checks
 - `pnpm format` / `pnpm format:check` — format or verify formatting with Oxfmt
 - `pnpm build` — type-check with `tsc -b` and build production bundle with Vite
 
 ## Implemented Screens & Features
 
-- **`/` (`UserInfo`)**: Header with product search, user info, and notifications popover; 30-day summary metric cards; `All orders` sortable, searchable, filterable, and paginated `OrdersTable`; `Recent orders` and `Related products` quick preview cards.
-- **`/actions` (`Actions`)**: `Changes you can make` dashboard with recent order status updates (`PATCH /v1/orders/:id`) and cancellation (`DELETE /v1/orders/:id`), digital & beta product cards, user profile editing (`PATCH /v1/users/:id`), new order creation (`OrderForm` -> `POST /v1/orders`), and contact schedule selector.
-- **`/products` (`Products`)**: Product catalog (`GET /v1/products`), search filtering, product creation (`POST /v1/products`), editing (`PATCH /v1/products/:id`), deletion (`DELETE /v1/products/:id`), Stripe Checkout launch (`POST /v1/stripe/payments`), and manual Stripe orders sync (`POST /v1/jobs/sync-stripe`).
-- **`/settings` (`Settings`)**: Profile management, `dashboard_web_auth` Bearer token storage/logout handling, and manual Stripe sync trigger.
+- **`/` (`UserInfo`)**: Dashboard with 30-day metrics, sortable/filterable/searchable/paginated `OrdersTable` (with inline `Delete` and `Details` links), `Recent orders` and `Related products` sidebars linked to detail pages.
+- **`/orders/:id` (`OrderDetails`)**: Full order view (`GET /v1/orders/:id`), edit customer/products/total/invoice (`PATCH /v1/orders/:id`), and delete order (`DELETE /v1/orders/:id`).
+- **`/actions` (`Actions`)**: Quick management for recent orders, products, customers, Stripe orders sync (`POST /v1/jobs/sync-stripe`), profile editing, and real order creation (`OrderForm` -> `POST /v1/orders`).
+- **`/products` (`Products`) & `/products/:id` (`ProductDetails`)**: Product catalog (`GET /v1/products`, `GET /v1/products/:id`), creation (`POST /v1/products`), editing (`PATCH /v1/products/:id`), deletion (`DELETE /v1/products/:id`), Stripe Checkout (`POST /v1/stripe/payments`), and Stripe sync (`POST /v1/jobs/sync-stripe`).
+- **`/users` (`Users`) & `/users/:id` (`UserDetails`)**: Users directory (`GET /v1/users?search=...`), active user switching, creation (`POST /v1/users`), detail view with customer orders (`GET /v1/users/:id`), editing (`PATCH /v1/users/:id`), and deletion (`DELETE /v1/users/:id`).
+- **`/settings` (`Settings`)**: Active user profile editing and background Stripe orders sync trigger.

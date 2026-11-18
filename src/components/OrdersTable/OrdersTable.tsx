@@ -12,6 +12,7 @@ import {
   formatShortDate,
   getDateTimestamp,
 } from '../../utils/helpers';
+import SafeLink from '../SafeLink';
 
 export type OrderSortColumn =
   | 'productName'
@@ -22,11 +23,12 @@ export type OrderSortColumn =
 export type SortDirection = 'ascending' | 'descending';
 
 export interface OrdersTableProps {
-  orders: Order[];
+  orders: readonly Order[];
   filter?: OrderStatusKeys | undefined;
   onFilterChange?: (nextFilter: OrderStatusKeys | undefined) => void;
   searchQuery?: string;
   onSearchChange?: (nextQuery: string) => void;
+  onDeleteOrder?: (order: Order) => void;
   pageSize?: number;
 }
 
@@ -162,7 +164,7 @@ const TableWrapper = styled.div`
 
 const StyledTable = styled.table`
   width: 100%;
-  min-inline-size: 560px;
+  min-inline-size: 620px;
   border-collapse: separate;
   border-spacing: 0;
   text-align: left;
@@ -193,6 +195,14 @@ const HeaderCell = styled.th`
   font-weight: 600;
   color: #374151;
   padding: 0;
+  white-space: nowrap;
+`;
+
+const PlainHeaderCell = styled.th`
+  border-bottom: 1px solid #e5e7eb;
+  font-weight: 600;
+  color: #374151;
+  padding: 10px 12px;
   white-space: nowrap;
 `;
 
@@ -241,11 +251,64 @@ const RowHeaderCell = styled.th`
   white-space: nowrap;
 `;
 
+const OrderLink = styled(SafeLink)`
+  color: #111827;
+  font-weight: 600;
+  text-decoration: none;
+
+  &:hover,
+  &:focus-visible {
+    text-decoration: underline;
+    color: #0b57d0;
+  }
+`;
+
 const BodyCell = styled.td`
   padding: 14px 12px;
   border-bottom: 1px solid #f3f4f6;
   color: #374151;
   white-space: nowrap;
+`;
+
+const ActionsCellGroup = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const DetailsLink = styled(SafeLink)`
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background-color: #f3f4f6;
+  color: #111827;
+  text-decoration: none;
+  font-size: 0.75rem;
+  font-weight: 600;
+
+  &:hover,
+  &:focus-visible {
+    background-color: #e5e7eb;
+  }
+`;
+
+const DeleteRowButton = styled.button`
+  border: 0;
+  border-radius: 6px;
+  padding: 4px 10px;
+  min-height: 28px;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background-color: #fee2e2;
+  color: #991b1b;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    background-color: #fecaca;
+  }
 `;
 
 const StatusBadge = styled.span<{ $status: OrderStatusKeys }>`
@@ -386,6 +449,7 @@ const OrdersTable = ({
   onFilterChange,
   searchQuery,
   onSearchChange,
+  onDeleteOrder,
   pageSize = ITEMS_PER_PAGE,
 }: OrdersTableProps) => {
   const [localSearch, setLocalSearch] = useState('');
@@ -429,6 +493,8 @@ const OrdersTable = ({
       }
       return (
         order.productName.toLowerCase().includes(normalizedQuery) ||
+        order.id.toLowerCase().includes(normalizedQuery) ||
+        (order.userName?.toLowerCase().includes(normalizedQuery) ?? false) ||
         formatOrderStatusLabel(order.status).toLowerCase().includes(normalizedQuery)
       );
     });
@@ -465,7 +531,7 @@ const OrdersTable = ({
       <HeaderRow>
         <TitleBlock>
           <SectionTitle>All orders</SectionTitle>
-          <SectionSubtitle>Monitor shipping status, date, etc.</SectionSubtitle>
+          <SectionSubtitle>Monitor orders, totals, and open details to edit.</SectionSubtitle>
         </TitleBlock>
 
         <div role="search" aria-label="Filter orders">
@@ -539,12 +605,13 @@ const OrdersTable = ({
                   </HeaderCell>
                 );
               })}
+              <PlainHeaderCell scope="col">Actions</PlainHeaderCell>
             </tr>
           </TableHead>
           <tbody>
             {visibleOrders.length === 0 ? (
               <tr>
-                <BodyCell colSpan={5}>No orders match your criteria.</BodyCell>
+                <BodyCell colSpan={6}>No orders match your criteria.</BodyCell>
               </tr>
             ) : (
               visibleOrders.map((order) => {
@@ -555,7 +622,9 @@ const OrdersTable = ({
 
                 return (
                   <BodyRow key={order.id}>
-                    <RowHeaderCell scope="row">{order.productName}</RowHeaderCell>
+                    <RowHeaderCell scope="row">
+                      <OrderLink to={`/orders/${order.id}`}>{order.productName}</OrderLink>
+                    </RowHeaderCell>
                     <BodyCell>
                       <StatusBadge $status={order.status}>
                         {formatOrderStatusLabel(order.status)}
@@ -572,6 +641,25 @@ const OrdersTable = ({
                       {formatCurrency(order.totalAmount)}
                     </BodyCell>
                     <BodyCell>{order.hasBeenReviewed ? 'Yes' : 'No'}</BodyCell>
+                    <BodyCell>
+                      <ActionsCellGroup>
+                        <DetailsLink
+                          to={`/orders/${order.id}`}
+                          aria-label={`View details for ${order.productName}`}
+                        >
+                          Details
+                        </DetailsLink>
+                        {onDeleteOrder && (
+                          <DeleteRowButton
+                            type="button"
+                            aria-label={`Delete order ${order.id}`}
+                            onClick={() => onDeleteOrder(order)}
+                          >
+                            Delete
+                          </DeleteRowButton>
+                        )}
+                      </ActionsCellGroup>
+                    </BodyCell>
                   </BodyRow>
                 );
               })

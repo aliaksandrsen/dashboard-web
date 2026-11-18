@@ -1,33 +1,32 @@
-import { useId, useState } from 'react';
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
+import { useContext, useEffect, useId, useState } from 'react';
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
+import { QueryClientContext } from '@tanstack/react-query';
 import axios from 'axios';
 import { useForm } from 'react-hook-form';
 import styled from 'styled-components';
+import SafeLink from '../../components/SafeLink';
 import {
   type Order,
   type ProductItem,
+  type UserInfoData,
   addOrderToStore,
   createFallbackOrder,
   normalizeOrdersData,
 } from '../../pages/UserInfo/UserInfo.State';
+import { formatCurrency } from '../../utils/helpers';
 
 export interface OrderFormProps {
   products?: ProductItem[];
-  userId?: number;
+  users?: UserInfoData[];
+  defaultUserId?: number;
   onOrderCreated?: (order: Order) => void;
 }
 
 interface OrderFormValues {
-  firstName: string;
-  lastName: string;
-  quantity: number;
-  productId: string;
-  email: string;
-  password: string;
-  contactTime: string;
+  userId: string;
+  total: number;
+  stripeInvoiceId: string;
 }
 
 const FormCard = styled.section`
@@ -54,7 +53,7 @@ const StyledForm = styled.form`
   display: flex;
   flex-direction: column;
   gap: 14px;
-  max-width: 440px;
+  max-width: 520px;
 `;
 
 const FieldGroup = styled.div`
@@ -108,33 +107,39 @@ const SelectInput = styled.select`
   }
 `;
 
-const PasswordRow = styled.div`
+const ProductsFieldset = styled.fieldset`
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+  margin: 0;
   display: flex;
-  align-items: stretch;
+  flex-direction: column;
   gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
 `;
 
-const PasswordInput = styled(TextInput)`
-  flex: 1;
-`;
-
-const ToggleButton = styled.button`
-  min-width: 44px;
-  min-height: 44px;
-  padding: 0 10px;
-  border: 1px solid #767676;
-  border-radius: 6px;
-  background-color: #f3f4f6;
+const ProductsLegend = styled.legend`
+  font-size: 0.875rem;
+  font-weight: 500;
   color: #111827;
+  padding: 0 4px;
+`;
+
+const CheckboxRow = styled.label`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.875rem;
+  color: #111827;
+  cursor: pointer;
+`;
+
+const CheckboxLeft = styled.span`
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  cursor: pointer;
-
-  &:focus-visible {
-    outline: 3px solid #0b57d0;
-    outline-offset: 1px;
-  }
+  gap: 8px;
 `;
 
 const FieldError = styled.span`
@@ -142,241 +147,193 @@ const FieldError = styled.span`
   font-size: 0.75rem;
 `;
 
-const OrderForm = ({ products = [], userId, onOrderCreated }: OrderFormProps) => {
+const OrderForm = ({
+  products = [],
+  users = [],
+  defaultUserId,
+  onOrderCreated,
+}: OrderFormProps) => {
   const formHeadingId = useId();
   const baseId = useId();
-  const [showPassword, setShowPassword] = useState(false);
-  const [submitMessage, setSubmitMessage] = useState<string | null>(null);
+  const queryClient = useContext(QueryClientContext);
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [createdOrder, setCreatedOrder] = useState<Order | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const {
     register,
     handleSubmit,
+    setValue,
     reset,
     formState: { errors, isSubmitting },
   } = useForm<OrderFormValues>({
     mode: 'onBlur',
     reValidateMode: 'onChange',
     defaultValues: {
-      firstName: '',
-      lastName: '',
-      quantity: 1,
-      productId: '',
-      email: '',
-      password: '',
-      contactTime: '',
+      userId: defaultUserId ? String(defaultUserId) : '',
+      total: 49.99,
+      stripeInvoiceId: '',
     },
   });
 
+  useEffect(() => {
+    if (defaultUserId !== undefined) {
+      setValue('userId', String(defaultUserId));
+    }
+  }, [defaultUserId, setValue]);
+
+  const toggleProductSelection = (product: ProductItem) => {
+    setSelectedProductIds((prev) => {
+      const exists = prev.includes(product.id);
+      const nextIds = exists ? prev.filter((id) => id !== product.id) : [...prev, product.id];
+      if (nextIds.length > 0) {
+        const sum = nextIds.reduce((acc, id) => {
+          const item = products.find((p) => p.id === id);
+          return acc + (item?.price ?? 0);
+        }, 0);
+        setValue('total', Number(sum.toFixed(2)), { shouldValidate: true });
+      }
+      return nextIds;
+    });
+  };
+
   const onSubmit = async (values: OrderFormValues) => {
-    setSubmitMessage(null);
+    setCreatedOrder(null);
     setSubmitError(null);
 
-    const selectedProduct = products.find((product) => product.id === values.productId);
-    const unitPrice = selectedProduct?.price ?? 49.99;
-    const quantity = Number(values.quantity) || 1;
-    const total = Number((unitPrice * quantity).toFixed(2));
+    const parsedTotal = Number(values.total);
+    const parsedUserId = values.userId ? Number(values.userId) : undefined;
+    const trimmedInvoice = values.stripeInvoiceId.trim();
 
     try {
       const response = await axios.post('/v1/orders', {
-        total,
-        ...(userId && userId > 0 ? { userId } : {}),
-        ...(selectedProduct ? { productIds: [selectedProduct.id] } : {}),
+        total: parsedTotal,
+        ...(parsedUserId && !Number.isNaN(parsedUserId) && parsedUserId > 0
+          ? { userId: parsedUserId }
+          : {}),
+        ...(trimmedInvoice ? { stripeInvoiceId: trimmedInvoice } : {}),
+        ...(selectedProductIds.length > 0 ? { productIds: selectedProductIds } : {}),
       });
 
       const normalized = normalizeOrdersData([response.data]);
-      const createdOrder: Order =
-        normalized[0] ??
-        createFallbackOrder(selectedProduct?.name ?? `Order for ${values.firstName}`, total);
+      const nextOrder: Order = normalized[0] ?? createFallbackOrder(`Order`, parsedTotal);
 
-      addOrderToStore(createdOrder);
-      onOrderCreated?.(createdOrder);
-      setSubmitMessage('Order submitted successfully');
-      reset();
+      addOrderToStore(nextOrder);
+      await queryClient?.invalidateQueries({ queryKey: ['orderData'] });
+      await queryClient?.invalidateQueries({ queryKey: ['userData'] });
+      await queryClient?.invalidateQueries({ queryKey: ['usersList'] });
+
+      onOrderCreated?.(nextOrder);
+      setCreatedOrder(nextOrder);
+      setSelectedProductIds([]);
+      reset({
+        userId: defaultUserId ? String(defaultUserId) : '',
+        total: 49.99,
+        stripeInvoiceId: '',
+      });
     } catch (error) {
       const message = axios.isAxiosError(error)
-        ? (error.response?.data?.message ?? 'Failed to submit order. Please try again.')
-        : 'Failed to submit order. Please try again.';
+        ? (error.response?.data?.message ?? 'Failed to create order. Please try again.')
+        : 'Failed to create order. Please try again.';
       setSubmitError(Array.isArray(message) ? message.join(', ') : String(message));
     }
   };
 
-  const firstNameId = `${baseId}-firstName`;
-  const lastNameId = `${baseId}-lastName`;
-  const quantityId = `${baseId}-quantity`;
-  const productIdField = `${baseId}-productId`;
-  const emailId = `${baseId}-email`;
-  const passwordId = `${baseId}-password`;
-  const contactTimeId = `${baseId}-contactTime`;
+  const userSelectId = `${baseId}-userId`;
+  const totalInputId = `${baseId}-total`;
+  const invoiceInputId = `${baseId}-stripeInvoiceId`;
 
   return (
     <FormCard aria-labelledby={formHeadingId}>
-      <FormTitle id={formHeadingId}>Place a New Order</FormTitle>
-      <FormSubtitle>Submit an order request and schedule preferred contact time.</FormSubtitle>
+      <FormTitle id={formHeadingId}>Create New Order</FormTitle>
+      <FormSubtitle>
+        Select products and customer to create an order via <code>POST /v1/orders</code>.
+      </FormSubtitle>
 
       <StyledForm aria-labelledby={formHeadingId} noValidate onSubmit={handleSubmit(onSubmit)}>
-        {products.length > 0 && (
+        {users.length > 0 && (
           <FieldGroup>
-            <FieldLabel htmlFor={productIdField}>Product</FieldLabel>
-            <SelectInput id={productIdField} {...register('productId')}>
-              <option value="">Standard Order ($49.99)</option>
-              {products.map((product) => (
-                <option key={product.id} value={product.id}>
-                  {product.name} (${product.price.toFixed(2)})
-                </option>
-              ))}
+            <FieldLabel htmlFor={userSelectId}>Customer</FieldLabel>
+            <SelectInput id={userSelectId} {...register('userId')}>
+              <option value="">Unassigned (no user)</option>
+              {users
+                .filter((u) => u.id !== undefined)
+                .map((user) => (
+                  <option key={user.id} value={String(user.id)}>
+                    {user.name} ({user.email ?? `ID #${user.id}`})
+                  </option>
+                ))}
             </SelectInput>
           </FieldGroup>
         )}
 
-        <FieldGroup>
-          <FieldLabel htmlFor={firstNameId}>
-            First Name <span aria-hidden="true">*</span>
-          </FieldLabel>
-          <TextInput
-            id={firstNameId}
-            type="text"
-            autoComplete="given-name"
-            required
-            aria-invalid={errors.firstName ? 'true' : 'false'}
-            aria-describedby={errors.firstName ? `${firstNameId}-error` : undefined}
-            {...register('firstName', {
-              required: 'First name is required',
-              minLength: { value: 2, message: 'First name must be at least 2 characters' },
+        {products.length > 0 && (
+          <ProductsFieldset>
+            <ProductsLegend>Products</ProductsLegend>
+            {products.map((product) => {
+              const checked = selectedProductIds.includes(product.id);
+              return (
+                <CheckboxRow key={product.id}>
+                  <CheckboxLeft>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleProductSelection(product)}
+                    />
+                    <span>{product.name}</span>
+                  </CheckboxLeft>
+                  <span>{formatCurrency(product.price)}</span>
+                </CheckboxRow>
+              );
             })}
-          />
-          {errors.firstName && (
-            <FieldError id={`${firstNameId}-error`}>{errors.firstName.message}</FieldError>
-          )}
-        </FieldGroup>
+          </ProductsFieldset>
+        )}
 
         <FieldGroup>
-          <FieldLabel htmlFor={lastNameId}>
-            Last Name <span aria-hidden="true">*</span>
+          <FieldLabel htmlFor={totalInputId}>
+            Total Amount (USD) <span aria-hidden="true">*</span>
           </FieldLabel>
           <TextInput
-            id={lastNameId}
-            type="text"
-            autoComplete="family-name"
-            required
-            aria-invalid={errors.lastName ? 'true' : 'false'}
-            aria-describedby={errors.lastName ? `${lastNameId}-error` : undefined}
-            {...register('lastName', {
-              required: 'Last name is required',
-              minLength: { value: 2, message: 'Last name must be at least 2 characters' },
-            })}
-          />
-          {errors.lastName && (
-            <FieldError id={`${lastNameId}-error`}>{errors.lastName.message}</FieldError>
-          )}
-        </FieldGroup>
-
-        <FieldGroup>
-          <FieldLabel htmlFor={quantityId}>
-            Quantity <span aria-hidden="true">*</span>
-          </FieldLabel>
-          <TextInput
-            id={quantityId}
+            id={totalInputId}
             type="number"
-            min={1}
-            max={12}
+            step="0.01"
+            min="0.01"
             required
-            aria-invalid={errors.quantity ? 'true' : 'false'}
-            aria-describedby={errors.quantity ? `${quantityId}-error` : undefined}
-            {...register('quantity', {
+            aria-invalid={errors.total ? 'true' : 'false'}
+            aria-describedby={errors.total ? `${totalInputId}-error` : undefined}
+            {...register('total', {
               valueAsNumber: true,
-              required: 'Quantity is required',
-              min: { value: 1, message: 'Quantity must be at least 1' },
-              max: { value: 12, message: 'Quantity cannot exceed 12' },
+              required: 'Total amount is required',
+              min: { value: 0.01, message: 'Total must be greater than 0' },
             })}
           />
-          {errors.quantity && (
-            <FieldError id={`${quantityId}-error`}>{errors.quantity.message}</FieldError>
+          {errors.total && (
+            <FieldError id={`${totalInputId}-error`}>{errors.total.message}</FieldError>
           )}
         </FieldGroup>
 
         <FieldGroup>
-          <FieldLabel htmlFor={emailId}>
-            Email <span aria-hidden="true">*</span>
-          </FieldLabel>
+          <FieldLabel htmlFor={invoiceInputId}>Stripe Invoice ID (optional)</FieldLabel>
           <TextInput
-            id={emailId}
-            type="email"
-            autoComplete="email"
+            id={invoiceInputId}
+            type="text"
+            placeholder="in_..."
+            aria-invalid="false"
             autoCorrect="off"
             autoCapitalize="none"
             spellCheck={false}
-            required
-            aria-invalid={errors.email ? 'true' : 'false'}
-            aria-describedby={errors.email ? `${emailId}-error` : undefined}
-            {...register('email', {
-              required: 'Email is required',
-              pattern: {
-                value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-                message: 'Please enter a valid email address',
-              },
-            })}
-          />
-          {errors.email && (
-            <FieldError id={`${emailId}-error`} className="email-errors">
-              {errors.email.message}
-            </FieldError>
-          )}
-        </FieldGroup>
-
-        <FieldGroup>
-          <FieldLabel htmlFor={passwordId}>
-            Password <span aria-hidden="true">*</span>
-          </FieldLabel>
-          <PasswordRow>
-            <PasswordInput
-              id={passwordId}
-              type={showPassword ? 'text' : 'password'}
-              autoComplete="current-password"
-              required
-              aria-invalid={errors.password ? 'true' : 'false'}
-              aria-describedby={errors.password ? `${passwordId}-error` : undefined}
-              {...register('password', {
-                required: 'Password is required',
-                minLength: { value: 6, message: 'Password must be at least 6 characters' },
-              })}
-            />
-            <ToggleButton
-              type="button"
-              aria-pressed={showPassword}
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
-              onClick={() => setShowPassword((prev) => !prev)}
-            >
-              {showPassword ? (
-                <VisibilityOffIcon fontSize="small" aria-hidden="true" />
-              ) : (
-                <VisibilityIcon fontSize="small" aria-hidden="true" />
-              )}
-            </ToggleButton>
-          </PasswordRow>
-          {errors.password && (
-            <FieldError id={`${passwordId}-error`}>{errors.password.message}</FieldError>
-          )}
-        </FieldGroup>
-
-        <FieldGroup>
-          <FieldLabel htmlFor={contactTimeId}>Best Contact Time</FieldLabel>
-          <TextInput
-            id={contactTimeId}
-            type="datetime-local"
-            aria-invalid={errors.contactTime ? 'true' : 'false'}
-            aria-describedby={errors.contactTime ? `${contactTimeId}-error` : undefined}
-            {...register('contactTime')}
+            {...register('stripeInvoiceId')}
           />
         </FieldGroup>
 
         <Button type="submit" variant="contained" disabled={isSubmitting}>
-          {isSubmitting ? 'Submitting...' : 'Submit'}
+          {isSubmitting ? 'Creating Order...' : 'Create Order'}
         </Button>
 
-        {submitMessage && (
+        {createdOrder && (
           <Alert severity="success" role="status">
-            {submitMessage}
+            Order #{createdOrder.id} created successfully.{' '}
+            <SafeLink to={`/orders/${createdOrder.id}`}>View order details</SafeLink>
           </Alert>
         )}
 

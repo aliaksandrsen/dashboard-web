@@ -1,62 +1,38 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useContext, useEffect, useId, useRef, useState } from 'react';
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import Container from '@mui/material/Container';
+import { QueryClientContext } from '@tanstack/react-query';
 import axios from 'axios';
 import { useForm } from 'react-hook-form';
+import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { useSnapshot } from 'valtio';
 import Header from '../../components/Header';
 import SafeLink from '../../components/SafeLink';
 import OrderForm from '../../elements/Forms';
 import { useProducts } from '../../hooks/useProducts';
+import { useUsers } from '../../hooks/useUsers';
 import { formatCurrency, formatShortDate } from '../../utils/helpers';
 import {
   type Order,
-  OrderStatus,
-  type OrderStatusKeys,
+  changeProductSearch,
   orderStore,
   productStore,
   removeOrderFromStore,
-  updateOrderStatusInStore,
   updateOrders,
   updateProducts,
   updateUser,
+  updateUsersList,
   userStore,
 } from '../UserInfo/UserInfo.State';
 import useUserInfo from '../UserInfo/useUserInfo';
-
-interface DigitalProduct {
-  id: string;
-  name: string;
-  date: string;
-  progress: string;
-}
-
-interface BetaProduct {
-  id: string;
-  name: string;
-  date: string;
-  price: number;
-}
 
 interface ProfileFormValues {
   address: string;
   name: string;
   email: string;
 }
-
-const DIGITAL_PRODUCTS: DigitalProduct[] = [
-  { id: 'dig-1', name: 'Carpentry Book', date: 'Feb 12, 2024', progress: '43%' },
-  { id: 'dig-2', name: 'Massage Therapy Course', date: 'Jan 9, 2025', progress: '87%' },
-  { id: 'dig-3', name: 'Private Pilot Course', date: 'Apr 4, 2025', progress: '47%' },
-];
-
-const DEFAULT_BETA_PRODUCTS: BetaProduct[] = [
-  { id: 'beta-1', name: 'Dog collar', date: 'Aug 5, 2025', price: 293 },
-  { id: 'beta-2', name: 'Aquarium', date: 'Aug 12, 2025', price: 777 },
-  { id: 'beta-3', name: 'Moon cakes', date: 'Aug 28, 2025', price: 134 },
-];
 
 const PageSection = styled.section`
   display: flex;
@@ -125,9 +101,16 @@ const ItemDetails = styled.div`
   min-width: 0;
 `;
 
-const ItemName = styled.span`
+const ItemLink = styled(SafeLink)`
   font-weight: 600;
   color: #111827;
+  text-decoration: none;
+
+  &:hover,
+  &:focus-visible {
+    text-decoration: underline;
+    color: #0b57d0;
+  }
 `;
 
 const ItemMeta = styled.span`
@@ -140,6 +123,25 @@ const OrderButtons = styled.div`
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+`;
+
+const CompactLink = styled(SafeLink)`
+  display: inline-flex;
+  align-items: center;
+  border-radius: 4px;
+  padding: 6px 10px;
+  min-height: 32px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-decoration: none;
+  background-color: #4b5563;
+  color: #ffffff;
+  box-sizing: border-box;
+
+  &:hover,
+  &:focus-visible {
+    background-color: #374151;
+  }
 `;
 
 const CompactButton = styled.button<{ $variant?: 'primary' | 'danger' }>`
@@ -167,6 +169,8 @@ const CompactButton = styled.button<{ $variant?: 'primary' | 'danger' }>`
 const CardFooter = styled.div`
   display: flex;
   justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
 `;
 
 const DarkLinkButton = styled(SafeLink)`
@@ -192,6 +196,17 @@ const DarkLinkButton = styled(SafeLink)`
   }
 `;
 
+const BottomGrid = styled.div`
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+
+  @media (max-width: 900px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+`;
+
 const ProfileFormCard = styled.section`
   background-color: #ffffff;
   border: 1px solid #e5e7eb;
@@ -203,7 +218,6 @@ const ProfileForm = styled.form`
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-width: 680px;
 `;
 
 const ProfileRow = styled.div`
@@ -248,64 +262,23 @@ const ErrorText = styled.span`
   grid-column: 2;
 `;
 
-const BottomGrid = styled.div`
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
-  gap: 24px;
-  align-items: start;
-
-  @media (max-width: 900px) {
-    grid-template-columns: minmax(0, 1fr);
-  }
-`;
-
-const ContactTimeCard = styled.section`
-  background-color: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-`;
-
-const TimeDisplayRow = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-`;
-
-const TimeChip = styled.div`
-  background-color: #ffffff;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  padding: 10px 14px;
-  font-size: 1rem;
-  font-weight: 600;
-  color: #111827;
-`;
-
-const getNextStatus = (status: OrderStatusKeys): OrderStatusKeys => {
-  if (status === OrderStatus.Pending) return OrderStatus.Shipped;
-  if (status === OrderStatus.Shipped) return OrderStatus.OutOfStock;
-  return OrderStatus.Pending;
-};
-
 const Actions = () => {
   const orderSnap = useSnapshot(orderStore);
   const userSnap = useSnapshot(userStore);
   const productSnap = useSnapshot(productStore);
+  const navigate = useNavigate();
+  const queryClient = useContext(QueryClientContext);
   const formId = useId();
-  const [searchFilter, setSearchFilter] = useState('');
   const [actionStatus, setActionStatus] = useState<{
     type: 'success' | 'error';
     text: string;
   } | null>(null);
-  const [contactDateTime, setContactDateTime] = useState('2022-11-05T22:34');
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const { orderData, refetchOrders, userData, refetchUser } = useUserInfo();
-  const { productsData } = useProducts(searchFilter);
+  const { productsData } = useProducts();
+  const { usersData } = useUsers();
+
   const syncedOrdersRef = useRef<Order[] | undefined>(undefined);
   const syncedUserRef = useRef<typeof userData>(undefined);
 
@@ -329,6 +302,12 @@ const Actions = () => {
     }
   }, [productsData]);
 
+  useEffect(() => {
+    if (usersData) {
+      updateUsersList(usersData);
+    }
+  }, [usersData]);
+
   const {
     register,
     handleSubmit,
@@ -351,50 +330,48 @@ const Actions = () => {
     });
   }, [userSnap.user.address, userSnap.user.name, userSnap.user.email, reset]);
 
-  const handleUpdateOrderStatus = async (order: Order) => {
-    const nextStatus = getNextStatus(order.status);
-    updateOrderStatusInStore(order.id, nextStatus);
-
-    const numericId = Number(order.id);
-    if (!Number.isNaN(numericId) && numericId > 0) {
-      try {
-        await axios.patch(`/v1/orders/${numericId}`, {
-          total: order.totalAmount > 0 ? order.totalAmount : 10,
-        });
-        setActionStatus({
-          type: 'success',
-          text: `Updated "${order.productName}" status to ${nextStatus}.`,
-        });
-      } catch {
-        setActionStatus({
-          type: 'error',
-          text: `Failed to sync status change for "${order.productName}" with server.`,
-        });
-      }
-    } else {
-      setActionStatus({
-        type: 'success',
-        text: `Updated "${order.productName}" status to ${nextStatus}.`,
-      });
-    }
-  };
-
-  const handleCancelOrder = async (order: Order) => {
+  const handleCancelOrder = async (order: Pick<Order, 'id' | 'productName'>) => {
     const numericId = Number(order.id);
     try {
       if (!Number.isNaN(numericId) && numericId > 0) {
         await axios.delete(`/v1/orders/${numericId}`);
       }
       removeOrderFromStore(order.id);
+      await queryClient?.invalidateQueries({ queryKey: ['orderData'] });
+      await queryClient?.invalidateQueries({ queryKey: ['userData'] });
       setActionStatus({
         type: 'success',
-        text: `Order "${order.productName}" removed.`,
+        text: `Order #${order.id} ("${order.productName}") deleted.`,
       });
     } catch {
       setActionStatus({
         type: 'error',
-        text: `Failed to cancel order "${order.productName}".`,
+        text: `Failed to delete order "${order.productName}".`,
       });
+    }
+  };
+
+  const handleTriggerStripeSync = async () => {
+    setIsSyncing(true);
+    setActionStatus(null);
+    try {
+      const res = await axios.post<{
+        message: string;
+        result: { processed: number; created: number; skipped: number };
+      }>('/v1/jobs/sync-stripe', {});
+      await queryClient?.invalidateQueries({ queryKey: ['orderData'] });
+      await refetchOrders();
+      setActionStatus({
+        type: 'success',
+        text: `${res.data.message} (processed: ${res.data.result.processed}, created: ${res.data.result.created})`,
+      });
+    } catch {
+      setActionStatus({
+        type: 'error',
+        text: 'Failed to trigger Stripe orders sync.',
+      });
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -413,6 +390,8 @@ const Actions = () => {
         email: response.data?.email ?? values.email,
         address: response.data?.address ?? values.address,
       });
+      await queryClient?.invalidateQueries({ queryKey: ['userData'] });
+      await queryClient?.invalidateQueries({ queryKey: ['usersList'] });
       await refetchUser();
       setActionStatus({ type: 'success', text: 'Profile updated successfully' });
     } catch (error) {
@@ -426,46 +405,23 @@ const Actions = () => {
     }
   };
 
-  const filteredOrders = orderSnap.orders
-    .filter((order) =>
-      searchFilter ? order.productName.toLowerCase().includes(searchFilter.toLowerCase()) : true,
-    )
-    .slice(0, 3);
-
-  const betaProducts: BetaProduct[] =
-    productSnap.products.length > 0
-      ? productSnap.products.slice(0, 3).map((product) => ({
-          id: product.id,
-          name: product.name,
-          date: product.createdAt ? formatShortDate(product.createdAt) : 'Aug 5, 2025',
-          price: product.price,
-        }))
-      : DEFAULT_BETA_PRODUCTS.filter((item) =>
-          searchFilter ? item.name.toLowerCase().includes(searchFilter.toLowerCase()) : true,
-        );
-
-  const parsedContactDate = new Date(contactDateTime);
-  const formattedClock = Number.isNaN(parsedContactDate.getTime())
-    ? { hour: '10', minute: '34', period: 'PM', date: '11/05/2022' }
-    : {
-        hour: String(parsedContactDate.getHours() % 12 || 12).padStart(2, '0'),
-        minute: String(parsedContactDate.getMinutes()).padStart(2, '0'),
-        period: parsedContactDate.getHours() >= 12 ? 'PM' : 'AM',
-        date: parsedContactDate.toLocaleDateString('en-US'),
-      };
+  const recentOrders = orderSnap.orders.slice(0, 3);
+  const recentProducts = productSnap.products.slice(0, 3);
+  const recentUsers = (usersData ?? userSnap.users).slice(0, 3);
 
   const addressId = `${formId}-address`;
   const nameId = `${formId}-name`;
   const emailId = `${formId}-email`;
-  const contactScheduleId = `${formId}-contact-schedule`;
 
   return (
     <Container component="section" maxWidth="xl">
       <Header
         userName={userSnap.user.name}
         joinedDate={userSnap.user.joinedDate}
-        searchName="orders, products"
-        onSubmitSearch={(query) => setSearchFilter(query)}
+        onSubmitSearch={(query) => {
+          changeProductSearch(query);
+          navigate('/products');
+        }}
       />
 
       <PageSection aria-labelledby={`${formId}-heading`}>
@@ -485,30 +441,28 @@ const Actions = () => {
           <ActionCard aria-label="Recent orders actions">
             <CardTitle>Recent orders</CardTitle>
             <CardList>
-              {filteredOrders.length === 0 ? (
+              {recentOrders.length === 0 ? (
                 <li>
                   <ItemMeta>No recent orders found.</ItemMeta>
                 </li>
               ) : (
-                filteredOrders.map((order) => (
+                recentOrders.map((order) => (
                   <CardListItem key={order.id}>
                     <ItemDetails>
-                      <ItemName>{order.productName}</ItemName>
+                      <ItemLink to={`/orders/${order.id}`}>{order.productName}</ItemLink>
                       <ItemMeta>
-                        {formatShortDate(order.orderedDate)} · {order.status}
+                        {formatShortDate(order.orderedDate)} · {formatCurrency(order.totalAmount)}
                       </ItemMeta>
                     </ItemDetails>
                     <OrderButtons>
-                      <CompactButton type="button" onClick={() => handleUpdateOrderStatus(order)}>
-                        Update Status
-                      </CompactButton>
+                      <CompactLink to={`/orders/${order.id}`}>Edit</CompactLink>
                       <CompactButton
                         type="button"
                         $variant="danger"
                         aria-label={`Cancel ${order.productName}`}
                         onClick={() => handleCancelOrder(order)}
                       >
-                        Cancel
+                        Delete
                       </CompactButton>
                     </OrderButtons>
                   </CardListItem>
@@ -520,137 +474,144 @@ const Actions = () => {
             </CardFooter>
           </ActionCard>
 
-          <ActionCard aria-label="Your digital products">
-            <CardTitle>Your digital products</CardTitle>
+          <ActionCard aria-label="Catalog products overview">
+            <CardTitle>Products</CardTitle>
             <CardList>
-              {DIGITAL_PRODUCTS.map((item) => (
-                <CardListItem key={item.id}>
-                  <ItemName>{item.name}</ItemName>
-                  <ItemMeta>{item.date}</ItemMeta>
-                  <ItemName>{item.progress}</ItemName>
-                </CardListItem>
-              ))}
+              {recentProducts.length === 0 ? (
+                <li>
+                  <ItemMeta>No products in catalog yet.</ItemMeta>
+                </li>
+              ) : (
+                recentProducts.map((item) => (
+                  <CardListItem key={item.id}>
+                    <ItemDetails>
+                      <ItemLink to={`/products/${item.id}`}>{item.name}</ItemLink>
+                      <ItemMeta>
+                        {item.createdAt ? formatShortDate(item.createdAt) : 'Active'}
+                      </ItemMeta>
+                    </ItemDetails>
+                    <strong>{formatCurrency(item.price)}</strong>
+                  </CardListItem>
+                ))
+              )}
             </CardList>
             <CardFooter>
               <DarkLinkButton to="/products">View all products</DarkLinkButton>
             </CardFooter>
           </ActionCard>
 
-          <ActionCard aria-label="Beta products">
-            <CardTitle>Beta products</CardTitle>
+          <ActionCard aria-label="Users and Stripe sync">
+            <CardTitle>Customers &amp; Stripe Sync</CardTitle>
             <CardList>
-              {betaProducts.map((item) => (
-                <CardListItem key={item.id}>
-                  <ItemName>{item.name}</ItemName>
-                  <ItemMeta>{item.date}</ItemMeta>
-                  <ItemName>{formatCurrency(item.price)}</ItemName>
-                </CardListItem>
-              ))}
+              {recentUsers.length === 0 ? (
+                <li>
+                  <ItemMeta>No customers created yet.</ItemMeta>
+                </li>
+              ) : (
+                recentUsers.map((customer) => (
+                  <CardListItem key={customer.id ?? customer.email}>
+                    <ItemDetails>
+                      <ItemLink to={`/users/${customer.id}`}>{customer.name}</ItemLink>
+                      <ItemMeta>{customer.email}</ItemMeta>
+                    </ItemDetails>
+                    <span>{customer.recentOrders} orders</span>
+                  </CardListItem>
+                ))
+              )}
             </CardList>
             <CardFooter>
-              <DarkLinkButton to="/products">View all beta</DarkLinkButton>
+              <DarkLinkButton to="/users">Manage users</DarkLinkButton>
+              <CompactButton type="button" disabled={isSyncing} onClick={handleTriggerStripeSync}>
+                {isSyncing ? 'Syncing...' : 'Sync Stripe'}
+              </CompactButton>
             </CardFooter>
           </ActionCard>
         </CardsGrid>
 
-        <ProfileFormCard aria-labelledby={`${formId}-profile-title`}>
-          <CardTitle id={`${formId}-profile-title`} style={{ textAlign: 'left', marginBottom: 14 }}>
-            Account Information
-          </CardTitle>
-          <ProfileForm
-            aria-labelledby={`${formId}-profile-title`}
-            noValidate
-            onSubmit={handleSubmit(onSubmitProfile)}
-          >
-            <ProfileRow>
-              <ProfileLabel htmlFor={addressId}>Address</ProfileLabel>
-              <ProfileInput
-                id={addressId}
-                type="text"
-                autoComplete="street-address"
-                required
-                aria-invalid={errors.address ? 'true' : 'false'}
-                aria-describedby={errors.address ? `${addressId}-error` : undefined}
-                {...register('address', { required: 'Address is required' })}
-              />
-              {errors.address && (
-                <ErrorText id={`${addressId}-error`}>{errors.address.message}</ErrorText>
-              )}
-            </ProfileRow>
-
-            <ProfileRow>
-              <ProfileLabel htmlFor={nameId}>Name</ProfileLabel>
-              <ProfileInput
-                id={nameId}
-                type="text"
-                autoComplete="name"
-                required
-                aria-invalid={errors.name ? 'true' : 'false'}
-                aria-describedby={errors.name ? `${nameId}-error` : undefined}
-                {...register('name', { required: 'Name is required' })}
-              />
-              {errors.name && <ErrorText id={`${nameId}-error`}>{errors.name.message}</ErrorText>}
-            </ProfileRow>
-
-            <ProfileRow>
-              <ProfileLabel htmlFor={emailId}>Email</ProfileLabel>
-              <ProfileInput
-                id={emailId}
-                type="email"
-                autoComplete="email"
-                autoCorrect="off"
-                autoCapitalize="none"
-                spellCheck={false}
-                required
-                aria-invalid={errors.email ? 'true' : 'false'}
-                aria-describedby={errors.email ? `${emailId}-error` : undefined}
-                {...register('email', {
-                  required: 'Email is required',
-                  pattern: {
-                    value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-                    message: 'Please enter a valid email address',
-                  },
-                })}
-              />
-              {errors.email && (
-                <ErrorText id={`${emailId}-error`}>{errors.email.message}</ErrorText>
-              )}
-            </ProfileRow>
-
-            <div>
-              <Button type="submit" variant="contained" disabled={isSubmitting}>
-                {isSubmitting ? 'Saving...' : 'Save Profile'}
-              </Button>
-            </div>
-          </ProfileForm>
-        </ProfileFormCard>
-
         <BottomGrid>
           <OrderForm
             products={[...productSnap.products]}
-            userId={userSnap.user.id}
+            users={[...(usersData ?? userSnap.users)]}
+            defaultUserId={userSnap.user.id}
             onOrderCreated={() => {
               void refetchOrders();
             }}
           />
 
-          <ContactTimeCard aria-label="Preferred contact schedule">
-            <CardTitle style={{ textAlign: 'left' }}>Preferred Contact Schedule</CardTitle>
-            <TimeDisplayRow>
-              <TimeChip aria-label="Selected hour">{formattedClock.hour}</TimeChip>
-              <span aria-hidden="true">:</span>
-              <TimeChip aria-label="Selected minute">{formattedClock.minute}</TimeChip>
-              <TimeChip aria-label="Selected period">{formattedClock.period}</TimeChip>
-              <TimeChip aria-label="Selected date">{formattedClock.date}</TimeChip>
-            </TimeDisplayRow>
-            <ProfileLabel htmlFor={contactScheduleId}>Adjust contact date &amp; time</ProfileLabel>
-            <ProfileInput
-              id={contactScheduleId}
-              type="datetime-local"
-              value={contactDateTime}
-              onChange={(event) => setContactDateTime(event.target.value)}
-            />
-          </ContactTimeCard>
+          <ProfileFormCard aria-labelledby={`${formId}-profile-title`}>
+            <CardTitle
+              id={`${formId}-profile-title`}
+              style={{ textAlign: 'left', marginBottom: 14 }}
+            >
+              {userSnap.user.id ? 'Account Information' : 'Create First Customer'}
+            </CardTitle>
+            <ProfileForm
+              aria-labelledby={`${formId}-profile-title`}
+              noValidate
+              onSubmit={handleSubmit(onSubmitProfile)}
+            >
+              <ProfileRow>
+                <ProfileLabel htmlFor={addressId}>Address</ProfileLabel>
+                <ProfileInput
+                  id={addressId}
+                  type="text"
+                  autoComplete="street-address"
+                  required
+                  aria-invalid={errors.address ? 'true' : 'false'}
+                  aria-describedby={errors.address ? `${addressId}-error` : undefined}
+                  {...register('address', { required: 'Address is required' })}
+                />
+                {errors.address && (
+                  <ErrorText id={`${addressId}-error`}>{errors.address.message}</ErrorText>
+                )}
+              </ProfileRow>
+
+              <ProfileRow>
+                <ProfileLabel htmlFor={nameId}>Name</ProfileLabel>
+                <ProfileInput
+                  id={nameId}
+                  type="text"
+                  autoComplete="name"
+                  required
+                  aria-invalid={errors.name ? 'true' : 'false'}
+                  aria-describedby={errors.name ? `${nameId}-error` : undefined}
+                  {...register('name', { required: 'Name is required' })}
+                />
+                {errors.name && <ErrorText id={`${nameId}-error`}>{errors.name.message}</ErrorText>}
+              </ProfileRow>
+
+              <ProfileRow>
+                <ProfileLabel htmlFor={emailId}>Email</ProfileLabel>
+                <ProfileInput
+                  id={emailId}
+                  type="email"
+                  autoComplete="email"
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  required
+                  aria-invalid={errors.email ? 'true' : 'false'}
+                  aria-describedby={errors.email ? `${emailId}-error` : undefined}
+                  {...register('email', {
+                    required: 'Email is required',
+                    pattern: {
+                      value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+                      message: 'Please enter a valid email address',
+                    },
+                  })}
+                />
+                {errors.email && (
+                  <ErrorText id={`${emailId}-error`}>{errors.email.message}</ErrorText>
+                )}
+              </ProfileRow>
+
+              <div>
+                <Button type="submit" variant="contained" disabled={isSubmitting}>
+                  {isSubmitting ? 'Saving...' : 'Save Profile'}
+                </Button>
+              </div>
+            </ProfileForm>
+          </ProfileFormCard>
         </BottomGrid>
       </PageSection>
     </Container>

@@ -45,9 +45,10 @@ describe('<Actions />', () => {
       address: '3194 W. Hamfort Rd.',
       joinedDate: '10/21/2002',
       recentOrders: 2,
-      newProducts: 6,
+      newProducts: 0,
       nextDeliveryDate: '07/27/2025',
     };
+    userStore.users = [];
     productStore.products = [];
 
     vi.mocked(axios.get).mockImplementation((url) => {
@@ -68,19 +69,22 @@ describe('<Actions />', () => {
       }
       if (url === '/v1/users') {
         return Promise.resolve({
-          data: {
-            id: 1,
-            name: 'Some Body',
-            email: 'some.body@email.com',
-            address: '3194 W. Hamfort Rd.',
-            joinedDate: '10/21/2002',
-            recentOrders: 2,
-            newProducts: 6,
-            nextDeliveryDate: '07/27/2025',
-          },
+          data: [
+            {
+              id: 1,
+              name: 'Some Body',
+              email: 'some.body@email.com',
+              address: '3194 W. Hamfort Rd.',
+              orders: [{ id: 1, total: 200 }],
+            },
+          ],
         });
       }
-      if (url === '/v1/products') return Promise.resolve({ data: [] });
+      if (url === '/v1/products') {
+        return Promise.resolve({
+          data: [{ id: 'p-1', name: 'Steel Computer', price: 519.57 }],
+        });
+      }
       return Promise.resolve({ data: [] });
     });
   });
@@ -89,36 +93,40 @@ describe('<Actions />', () => {
     vi.clearAllMocks();
   });
 
-  it('renders Changes you can make heading, 3 action cards, profile form, and order form', async () => {
+  it('renders real orders, products, customers cards, order form, and profile form', async () => {
     renderActions();
 
     expect(await screen.findByText('Fancy oils')).toBeDefined();
+    expect((await screen.findAllByText('Steel Computer')).length).toBeGreaterThan(0);
     expect(screen.getByRole('heading', { name: 'Changes you can make' })).toBeDefined();
     expect(screen.getByText('Recent orders')).toBeDefined();
-    expect(screen.getByText('Your digital products')).toBeDefined();
-    expect(screen.getByText('Beta products')).toBeDefined();
-    expect(screen.getByText('Carpentry Book')).toBeDefined();
+    expect(screen.getByRole('heading', { name: 'Products' })).toBeDefined();
+    expect(screen.getByText('Customers & Stripe Sync')).toBeDefined();
     expect(screen.getByDisplayValue('3194 W. Hamfort Rd.')).toBeDefined();
   });
 
-  it('updates order status and cancels order via backend endpoints', async () => {
-    vi.mocked(axios.patch).mockResolvedValueOnce({ data: { id: 1, total: 200 } });
+  it('deletes order via DELETE /v1/orders/:id and triggers Stripe sync', async () => {
     vi.mocked(axios.delete).mockResolvedValueOnce({ data: { id: 1 } });
+    vi.mocked(axios.post).mockResolvedValueOnce({
+      data: {
+        message: 'Stripe orders synchronization triggered successfully',
+        result: { processed: 2, created: 1, skipped: 1 },
+      },
+    });
 
     renderActions();
     expect(await screen.findByText('Fancy oils')).toBeDefined();
-    expect(await screen.findByText('Some Body')).toBeDefined();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Update Status' }));
-    await waitFor(() => {
-      expect(axios.patch).toHaveBeenCalledWith('/v1/orders/1', { total: 200 });
-    });
-    expect(orderStore.orders[0].status).toBe(OrderStatus.Shipped);
+    expect((await screen.findAllByText('Steel Computer')).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel Fancy oils' }));
     await waitFor(() => {
       expect(axios.delete).toHaveBeenCalledWith('/v1/orders/1');
       expect(orderStore.orders).toHaveLength(0);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sync Stripe' }));
+    await waitFor(() => {
+      expect(axios.post).toHaveBeenCalledWith('/v1/jobs/sync-stripe', {});
     });
   });
 
@@ -133,7 +141,7 @@ describe('<Actions />', () => {
     });
 
     renderActions();
-    expect(await screen.findByText('Some Body')).toBeDefined();
+    expect(await screen.findByDisplayValue('Some Body')).toBeDefined();
 
     fireEvent.change(screen.getByLabelText('Address'), { target: { value: '500 New Ave' } });
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Updated Name' } });
@@ -151,7 +159,7 @@ describe('<Actions />', () => {
   it('has no axe accessibility violations', async () => {
     const { container } = renderActions();
     expect(await screen.findByText('Fancy oils')).toBeDefined();
-    expect(await screen.findByText('Some Body')).toBeDefined();
+    expect((await screen.findAllByText('Steel Computer')).length).toBeGreaterThan(0);
     const results = await axe.run(container, {
       rules: { 'color-contrast': { enabled: false } },
     });

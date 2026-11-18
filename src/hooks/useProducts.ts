@@ -5,9 +5,6 @@ import { type ProductItem, normalizeProductsData } from '../pages/UserInfo/UserI
 
 const fallbackQueryClient = new QueryClient();
 
-export const isProductServerError = (error: unknown): boolean =>
-  axios.isAxiosError(error) && (error.response?.status ?? 0) >= 500;
-
 export function useProducts(search = '') {
   const contextClient = useContext(QueryClientContext);
   const hasProvider = Boolean(contextClient);
@@ -28,7 +25,6 @@ export function useProducts(search = '') {
             params: search.trim() ? { search: search.trim() } : undefined,
           })
           .then((res) => normalizeProductsData(res.data)),
-      throwOnError: isProductServerError,
     },
     contextClient ?? fallbackQueryClient,
   );

@@ -1,13 +1,15 @@
-import { useEffect, useId, useState } from 'react';
+import { useContext, useEffect, useId, useState } from 'react';
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import Container from '@mui/material/Container';
+import { QueryClientContext } from '@tanstack/react-query';
 import axios from 'axios';
 import { useForm } from 'react-hook-form';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { useSnapshot } from 'valtio';
 import Header from '../../components/Header';
+import SafeLink from '../../components/SafeLink';
 import { changeProductSearch, updateUser, userStore } from '../UserInfo/UserInfo.State';
 import useUserInfo from '../UserInfo/useUserInfo';
 
@@ -15,10 +17,6 @@ interface AccountFormValues {
   name: string;
   email: string;
   address: string;
-}
-
-interface AuthTokenValues {
-  token: string;
 }
 
 const PageBody = styled.div`
@@ -101,22 +99,13 @@ const ErrorText = styled.span`
   font-size: 0.75rem;
 `;
 
-const ButtonRow = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-`;
-
 const Settings = () => {
   const userSnap = useSnapshot(userStore);
-  const [searchParams] = useSearchParams();
-  const isLoggedOut = searchParams.get('loggedOut') === 'true';
+  const navigate = useNavigate();
+  const queryClient = useContext(QueryClientContext);
   const idPrefix = useId();
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(
     null,
-  );
-  const [hasStoredToken, setHasStoredToken] = useState<boolean>(() =>
-    Boolean(localStorage.getItem('dashboard_web_auth')),
   );
   const [isSyncing, setIsSyncing] = useState(false);
 
@@ -150,15 +139,6 @@ const Settings = () => {
     });
   }, [userSnap.user.name, userSnap.user.email, userSnap.user.address, resetProfile]);
 
-  const {
-    register: registerToken,
-    handleSubmit: handleTokenSubmit,
-    reset: resetTokenForm,
-    formState: { errors: tokenErrors },
-  } = useForm<AuthTokenValues>({
-    defaultValues: { token: '' },
-  });
-
   const onSaveAccount = async (values: AccountFormValues) => {
     setFeedback(null);
     try {
@@ -174,24 +154,13 @@ const Settings = () => {
         email: response.data?.email ?? values.email,
         address: response.data?.address ?? values.address,
       });
+      await queryClient?.invalidateQueries({ queryKey: ['userData'] });
+      await queryClient?.invalidateQueries({ queryKey: ['usersList'] });
       await refetchUser();
       setFeedback({ type: 'success', text: 'Account settings saved.' });
     } catch {
       setFeedback({ type: 'error', text: 'Failed to save account settings.' });
     }
-  };
-
-  const onSaveToken = (values: AuthTokenValues) => {
-    localStorage.setItem('dashboard_web_auth', values.token.trim());
-    setHasStoredToken(true);
-    resetTokenForm();
-    setFeedback({ type: 'success', text: 'Authorization token saved to localStorage.' });
-  };
-
-  const handleClearToken = () => {
-    localStorage.removeItem('dashboard_web_auth');
-    setHasStoredToken(false);
-    setFeedback({ type: 'success', text: 'Authorization token cleared.' });
   };
 
   const handleTriggerSync = async () => {
@@ -202,9 +171,10 @@ const Settings = () => {
         message: string;
         result: { processed: number; created: number; skipped: number };
       }>('/v1/jobs/sync-stripe', {});
+      await queryClient?.invalidateQueries({ queryKey: ['orderData'] });
       setFeedback({
         type: 'success',
-        text: `${res.data.message} (processed: ${res.data.result.processed}, created: ${res.data.result.created})`,
+        text: `${res.data.message} (processed: ${res.data.result.processed}, created: ${res.data.result.created}, skipped: ${res.data.result.skipped})`,
       });
     } catch {
       setFeedback({ type: 'error', text: 'Failed to trigger Stripe synchronization.' });
@@ -216,24 +186,20 @@ const Settings = () => {
   const nameId = `${idPrefix}-settings-name`;
   const emailId = `${idPrefix}-settings-email`;
   const addressId = `${idPrefix}-settings-address`;
-  const tokenId = `${idPrefix}-settings-token`;
 
   return (
     <Container component="section" maxWidth="xl">
       <Header
         userName={userSnap.user.name}
         joinedDate={userSnap.user.joinedDate}
-        onSubmitSearch={(query) => changeProductSearch(query)}
+        onSubmitSearch={(query) => {
+          changeProductSearch(query);
+          navigate('/products');
+        }}
       />
 
       <PageBody>
         <PageTitle>Account &amp; System Settings</PageTitle>
-
-        {isLoggedOut && (
-          <Alert severity="info" role="status">
-            You have been logged out. Enter a token below to sign back in.
-          </Alert>
-        )}
 
         {feedback && (
           <Alert
@@ -247,7 +213,11 @@ const Settings = () => {
 
         <CardsGrid>
           <Panel aria-labelledby={`${idPrefix}-profile-heading`}>
-            <PanelTitle id={`${idPrefix}-profile-heading`}>User Profile</PanelTitle>
+            <PanelTitle id={`${idPrefix}-profile-heading`}>
+              {userSnap.user.id
+                ? `Active User Profile (#${userSnap.user.id})`
+                : 'Create User Profile'}
+            </PanelTitle>
             <FormStack
               aria-labelledby={`${idPrefix}-profile-heading`}
               noValidate
@@ -301,65 +271,34 @@ const Settings = () => {
                 {profileErrors.address && <ErrorText>{profileErrors.address.message}</ErrorText>}
               </FieldGroup>
 
-              <div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 <Button type="submit" variant="contained" disabled={isSavingProfile}>
                   {isSavingProfile ? 'Saving...' : 'Save Settings'}
+                </Button>
+                <Button component={SafeLink} to="/users" variant="outlined">
+                  Manage All Users
                 </Button>
               </div>
             </FormStack>
           </Panel>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <Panel aria-labelledby={`${idPrefix}-auth-heading`}>
-              <PanelTitle id={`${idPrefix}-auth-heading`}>Session Authentication</PanelTitle>
-              <p style={{ margin: 0, fontSize: '0.875rem', color: '#4b5563' }}>
-                Token status: <strong>{hasStoredToken ? 'Configured' : 'Not set'}</strong>
-              </p>
-              <FormStack
-                aria-labelledby={`${idPrefix}-auth-heading`}
-                noValidate
-                onSubmit={handleTokenSubmit(onSaveToken)}
+          <Panel aria-labelledby={`${idPrefix}-jobs-heading`}>
+            <PanelTitle id={`${idPrefix}-jobs-heading`}>Background Jobs</PanelTitle>
+            <p style={{ margin: 0, fontSize: '0.875rem', color: '#4b5563' }}>
+              Manually synchronize Stripe invoices with database orders via{' '}
+              <code>POST /v1/jobs/sync-stripe</code>.
+            </p>
+            <div>
+              <Button
+                type="button"
+                variant="contained"
+                disabled={isSyncing}
+                onClick={handleTriggerSync}
               >
-                <FieldGroup>
-                  <FieldLabel htmlFor={tokenId}>Bearer Token</FieldLabel>
-                  <StyledInput
-                    id={tokenId}
-                    type="password"
-                    placeholder="Bearer ..."
-                    required
-                    aria-invalid={tokenErrors.token ? 'true' : 'false'}
-                    {...registerToken('token', { required: 'Token is required' })}
-                  />
-                  {tokenErrors.token && <ErrorText>{tokenErrors.token.message}</ErrorText>}
-                </FieldGroup>
-                <ButtonRow>
-                  <Button type="submit" variant="contained">
-                    Save Token
-                  </Button>
-                  <Button type="button" variant="outlined" onClick={handleClearToken}>
-                    Clear Token
-                  </Button>
-                </ButtonRow>
-              </FormStack>
-            </Panel>
-
-            <Panel aria-labelledby={`${idPrefix}-jobs-heading`}>
-              <PanelTitle id={`${idPrefix}-jobs-heading`}>Background Jobs</PanelTitle>
-              <p style={{ margin: 0, fontSize: '0.875rem', color: '#4b5563' }}>
-                Manually synchronize Stripe invoices with database orders.
-              </p>
-              <div>
-                <Button
-                  type="button"
-                  variant="contained"
-                  disabled={isSyncing}
-                  onClick={handleTriggerSync}
-                >
-                  {isSyncing ? 'Running Sync...' : 'Run Stripe Orders Sync'}
-                </Button>
-              </div>
-            </Panel>
-          </div>
+                {isSyncing ? 'Running Sync...' : 'Run Stripe Orders Sync'}
+              </Button>
+            </div>
+          </Panel>
         </CardsGrid>
       </PageBody>
     </Container>

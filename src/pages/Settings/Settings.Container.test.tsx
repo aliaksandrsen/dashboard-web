@@ -21,13 +21,13 @@ vi.mock('axios', async (importOriginal) => {
   };
 });
 
-const renderSettings = (initialEntry = '/settings') => {
+const renderSettings = () => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[initialEntry]}>
+      <MemoryRouter>
         <Settings />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -36,9 +36,8 @@ const renderSettings = (initialEntry = '/settings') => {
 
 describe('<Settings />', () => {
   beforeEach(() => {
-    localStorage.clear();
     userStore.user = {
-      id: 1,
+      id: undefined,
       name: '',
       email: '',
       address: '',
@@ -71,32 +70,24 @@ describe('<Settings />', () => {
     vi.clearAllMocks();
   });
 
-  it('shows logged out notice when navigated with loggedOut=true', async () => {
-    renderSettings('/settings?loggedOut=true');
-    expect(await screen.findByText('Some Body')).toBeDefined();
-    expect(screen.getByText(/You have been logged out/i)).toBeDefined();
-  });
-
-  it('saves and clears auth token in localStorage and saves profile', async () => {
+  it('saves active user profile via PATCH /v1/users/:id and triggers Stripe sync', async () => {
     vi.mocked(axios.patch).mockResolvedValueOnce({
       data: {
         id: 1,
         name: 'New User',
-        email: 'new@email.com',
-        address: '100 Main St',
+        email: 'some.body@email.com',
+        address: '3194 W. Hamfort Rd.',
+      },
+    });
+    vi.mocked(axios.post).mockResolvedValueOnce({
+      data: {
+        message: 'Stripe orders synchronization triggered successfully',
+        result: { processed: 4, created: 2, skipped: 2 },
       },
     });
 
     renderSettings();
     expect(await screen.findByDisplayValue('Some Body')).toBeDefined();
-
-    fireEvent.change(screen.getByLabelText('Bearer Token'), { target: { value: 'Bearer secret' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save Token' }));
-    expect(await screen.findByText('Authorization token saved to localStorage.')).toBeDefined();
-    expect(localStorage.getItem('dashboard_web_auth')).toBe('Bearer secret');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Clear Token' }));
-    expect(localStorage.getItem('dashboard_web_auth')).toBeNull();
 
     fireEvent.change(screen.getByLabelText('Full Name'), { target: { value: 'New User' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save Settings' }));
@@ -108,11 +99,16 @@ describe('<Settings />', () => {
         address: '3194 W. Hamfort Rd.',
       });
     });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run Stripe Orders Sync' }));
+    expect(
+      await screen.findByText(/Stripe orders synchronization triggered successfully/),
+    ).toBeDefined();
   });
 
   it('has no axe accessibility violations', async () => {
     const { container } = renderSettings();
-    expect(await screen.findByText('Some Body')).toBeDefined();
+    expect(await screen.findByDisplayValue('Some Body')).toBeDefined();
     const results = await axe.run(container, {
       rules: { 'color-contrast': { enabled: false } },
     });

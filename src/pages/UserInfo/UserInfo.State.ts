@@ -11,12 +11,14 @@ export type OrderStatusKeys = (typeof OrderStatus)[keyof typeof OrderStatus];
 export interface Order {
   id: string;
   productName: string;
+  productIds?: readonly string[];
   status: OrderStatusKeys;
   orderedDate: string;
   deliveryDate: string;
   totalAmount: number;
   hasBeenReviewed: boolean;
   userId?: number | null;
+  userName?: string;
   stripeInvoiceId?: string | null;
 }
 
@@ -73,11 +75,11 @@ export interface BackendUser {
 
 const formatToUsDate = (dateInput?: string | Date): string => {
   if (!dateInput) {
-    return '06/24/2025';
+    return '';
   }
   const parsed = dateInput instanceof Date ? dateInput : new Date(dateInput);
   if (Number.isNaN(parsed.getTime())) {
-    return typeof dateInput === 'string' ? dateInput : '06/24/2025';
+    return typeof dateInput === 'string' ? dateInput : '';
   }
   const month = String(parsed.getMonth() + 1).padStart(2, '0');
   const day = String(parsed.getDate()).padStart(2, '0');
@@ -86,9 +88,12 @@ const formatToUsDate = (dateInput?: string | Date): string => {
 };
 
 const addDaysToUsDate = (dateInput?: string, days = 3): string => {
-  const base = dateInput ? new Date(dateInput) : new Date();
+  if (!dateInput) {
+    return '';
+  }
+  const base = new Date(dateInput);
   if (Number.isNaN(base.getTime())) {
-    return '07/27/2025';
+    return '';
   }
   base.setDate(base.getDate() + days);
   return formatToUsDate(base);
@@ -120,15 +125,18 @@ export const normalizeOrdersData = (raw: unknown): Order[] => {
     const backendOrder = item as BackendOrder;
     const numericId = Number(backendOrder.id);
     const total = typeof backendOrder.total === 'number' ? backendOrder.total : 0;
+    const products = Array.isArray(backendOrder.products) ? backendOrder.products : [];
     const productName =
-      Array.isArray(backendOrder.products) && backendOrder.products.length > 0
-        ? backendOrder.products.map((product) => product.name).join(', ')
+      products.length > 0
+        ? products.map((product) => product.name).join(', ')
         : `Order #${backendOrder.id}`;
 
     let status: OrderStatusKeys = OrderStatus.Pending;
     if (total <= 0) {
       status = OrderStatus.OutOfStock;
-    } else if (backendOrder.stripeInvoiceId || (!Number.isNaN(numericId) && numericId % 2 === 1)) {
+    } else if (backendOrder.stripeInvoiceId) {
+      status = OrderStatus.Shipped;
+    } else if (!Number.isNaN(numericId) && numericId % 2 === 1) {
       status = OrderStatus.Shipped;
     }
 
@@ -138,6 +146,7 @@ export const normalizeOrdersData = (raw: unknown): Order[] => {
     return {
       id: String(backendOrder.id),
       productName,
+      productIds: products.map((product) => product.id),
       status,
       orderedDate,
       deliveryDate,
@@ -146,14 +155,34 @@ export const normalizeOrdersData = (raw: unknown): Order[] => {
         backendOrder.stripeInvoiceId || (!Number.isNaN(numericId) && numericId % 2 === 1),
       ),
       userId: backendOrder.userId ?? null,
+      userName: backendOrder.user?.name,
       stripeInvoiceId: backendOrder.stripeInvoiceId ?? null,
     };
   });
 };
 
+const mapBackendUser = (backendUser: BackendUser): UserInfoData => {
+  const userOrders = Array.isArray(backendUser.orders) ? backendUser.orders : [];
+  const latestOrderDate = userOrders[0]?.createdAt;
+
+  return {
+    id: backendUser.id,
+    name: backendUser.name ?? '',
+    email: backendUser.email ?? '',
+    address: backendUser.address ?? '',
+    joinedDate: latestOrderDate ?? '2025-01-01',
+    recentOrders: userOrders.length,
+    newProducts: 0,
+    nextDeliveryDate: addDaysToUsDate(latestOrderDate, 5),
+  };
+};
+
 export const normalizeUserData = (raw: unknown): UserInfoData => {
   const emptyUser: UserInfoData = {
+    id: undefined,
     name: '',
+    email: '',
+    address: '',
     joinedDate: '',
     recentOrders: 0,
     newProducts: 0,
@@ -173,20 +202,15 @@ export const normalizeUserData = (raw: unknown): UserInfoData => {
     return candidate;
   }
 
-  const backendUser = candidate as BackendUser;
-  const userOrders = Array.isArray(backendUser.orders) ? backendUser.orders : [];
-  const latestOrderDate = userOrders[0]?.createdAt;
+  return mapBackendUser(candidate as BackendUser);
+};
 
-  return {
-    id: backendUser.id,
-    name: backendUser.name ?? '',
-    email: backendUser.email ?? '',
-    address: backendUser.address ?? '',
-    joinedDate: latestOrderDate ?? '2025-01-01',
-    recentOrders: userOrders.length,
-    newProducts: 5,
-    nextDeliveryDate: addDaysToUsDate(latestOrderDate, 5),
-  };
+export const normalizeUsersList = (raw: unknown): UserInfoData[] => {
+  if (!raw) {
+    return [];
+  }
+  const list = Array.isArray(raw) ? raw : [raw];
+  return list.map((item) => (isFrontendUser(item) ? item : mapBackendUser(item as BackendUser)));
 };
 
 export const normalizeProductsData = (raw: unknown): ProductItem[] => {
@@ -222,9 +246,11 @@ export const orderStore = proxy<{
 
 export const userStore = proxy<{
   user: UserInfoData;
+  users: UserInfoData[];
+  activeUserId: number | undefined;
 }>({
   user: {
-    id: 1,
+    id: undefined,
     name: '',
     email: '',
     address: '',
@@ -233,6 +259,8 @@ export const userStore = proxy<{
     newProducts: 0,
     nextDeliveryDate: '',
   },
+  users: [],
+  activeUserId: undefined,
 });
 
 export const productStore = proxy<{
@@ -285,6 +313,28 @@ export const createFallbackOrder = (productName: string, totalAmount: number): O
 
 export const updateUser = (updatedUser: UserInfoData) => {
   userStore.user = updatedUser;
+  if (updatedUser.id !== undefined) {
+    userStore.activeUserId = updatedUser.id;
+  }
+};
+
+export const updateUsersList = (users: UserInfoData[]) => {
+  userStore.users = users;
+  if (users.length === 0) {
+    return;
+  }
+  const currentActive = users.find((u) => u.id === userStore.activeUserId);
+  const selected = currentActive ?? users[0];
+  userStore.user = selected;
+  userStore.activeUserId = selected.id;
+};
+
+export const setActiveUser = (userId: number) => {
+  userStore.activeUserId = userId;
+  const found = userStore.users.find((u) => u.id === userId);
+  if (found) {
+    userStore.user = found;
+  }
 };
 
 export const updateProducts = (updatedProducts: ProductItem[]) => {

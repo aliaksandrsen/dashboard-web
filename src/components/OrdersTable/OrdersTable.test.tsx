@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import axe from 'axe-core';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import OrdersTable from '.';
 import { type Order, OrderStatus } from '../../pages/UserInfo/UserInfo.State';
 
@@ -119,6 +119,17 @@ describe('<OrdersTable />', () => {
 
     fireEvent.click(totalHeaderBtn);
     expect(totalHeaderCell?.getAttribute('aria-sort')).toBe('descending');
+  });
+
+  it('renders action links and triggers delete callback', () => {
+    const onDeleteOrder = vi.fn();
+    render(<OrdersTable orders={sampleOrders} onDeleteOrder={onDeleteOrder} />);
+
+    const detailsLink = screen.getByRole('link', { name: 'View details for Fancy soap' });
+    expect(detailsLink.getAttribute('href')).toBe('/orders/1');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete order 1' }));
+    expect(onDeleteOrder).toHaveBeenCalledWith(sampleOrders[0]);
   });
 
   it('has no axe accessibility violations', async () => {

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import GridViewRoundedIcon from '@mui/icons-material/GridViewRounded';
+import GroupOutlinedIcon from '@mui/icons-material/GroupOutlined';
 import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
-import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
 import PersonOutlineRoundedIcon from '@mui/icons-material/PersonOutlineRounded';
 import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
 import { Box, Button, Drawer, Typography } from '@mui/material';
@@ -76,18 +76,17 @@ const MobileToggleButton = styled(Button)`
   margin: 8px;
 `;
 
-const handleLogoutClick = (onNavigate?: () => void) => {
-  localStorage.removeItem('dashboard_web_auth');
-  onNavigate?.();
-};
-
 const NavContent = ({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) => (
   <SidebarInner>
     <BrandTitle variant="h6">TestsTore</BrandTitle>
     <Nav aria-label="Main navigation">
       <NavList>
         <li>
-          <NavLink to="/" aria-current={pathname === '/' ? 'page' : undefined} onClick={onNavigate}>
+          <NavLink
+            to="/"
+            aria-current={pathname === '/' || pathname.startsWith('/orders') ? 'page' : undefined}
+            onClick={onNavigate}
+          >
             <GridViewRoundedIcon fontSize="small" aria-hidden="true" />
             <span>Orders</span>
           </NavLink>
@@ -105,11 +104,21 @@ const NavContent = ({ pathname, onNavigate }: { pathname: string; onNavigate?: (
         <li>
           <NavLink
             to="/products"
-            aria-current={pathname === '/products' ? 'page' : undefined}
+            aria-current={pathname.startsWith('/products') ? 'page' : undefined}
             onClick={onNavigate}
           >
             <Inventory2OutlinedIcon fontSize="small" aria-hidden="true" />
             <span>Products</span>
+          </NavLink>
+        </li>
+        <li>
+          <NavLink
+            to="/users"
+            aria-current={pathname.startsWith('/users') ? 'page' : undefined}
+            onClick={onNavigate}
+          >
+            <GroupOutlinedIcon fontSize="small" aria-hidden="true" />
+            <span>Users</span>
           </NavLink>
         </li>
       </NavList>
@@ -123,12 +132,6 @@ const NavContent = ({ pathname, onNavigate }: { pathname: string; onNavigate?: (
           >
             <SettingsOutlinedIcon fontSize="small" aria-hidden="true" />
             <span>Settings</span>
-          </NavLink>
-        </li>
-        <li>
-          <NavLink to="/settings?loggedOut=true" onClick={() => handleLogoutClick(onNavigate)}>
-            <LogoutRoundedIcon fontSize="small" aria-hidden="true" />
-            <span>Logout</span>
           </NavLink>
         </li>
       </NavList>

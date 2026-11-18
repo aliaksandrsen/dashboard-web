@@ -108,9 +108,52 @@ describe('<Products />', () => {
       });
     });
 
+    expect(screen.getByRole('link', { name: 'Fullstack JS Book' }).getAttribute('href')).toBe(
+      '/products/uuid-1',
+    );
+
     fireEvent.click(screen.getByRole('button', { name: 'Delete Fullstack JS Book' }));
     await waitFor(() => {
       expect(axios.delete).toHaveBeenCalledWith('/v1/products/uuid-1');
+    });
+  });
+
+  it('supports editing via dialog, client-side search filtering, and Stripe Checkout submission', async () => {
+    vi.mocked(axios.patch).mockResolvedValueOnce({
+      data: { id: 'uuid-1', name: 'Edited Book', price: 59.99, stripeProductId: 'prod_123' },
+    });
+    vi.mocked(axios.post).mockResolvedValueOnce({ data: {} });
+
+    renderProducts();
+    await screen.findByText('Fullstack JS Book');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Fullstack JS Book' }));
+    fireEvent.change(screen.getByLabelText('Edit Product Name'), {
+      target: { value: 'Edited Book' },
+    });
+    fireEvent.change(screen.getByLabelText('Edit Price (USD)'), { target: { value: '59.99' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+    expect(await screen.findByText('Updated product "Edited Book".')).toBeDefined();
+    expect(axios.patch).toHaveBeenCalledWith('/v1/products/uuid-1', {
+      name: 'Edited Book',
+      price: 59.99,
+      stripeProductId: 'prod_123',
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Checkout' }));
+    fireEvent.change(screen.getByLabelText('Stripe Price ID'), { target: { value: 'price_abc' } });
+    fireEvent.change(screen.getByLabelText('Quantity'), { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Pay with Stripe' }));
+
+    expect(await screen.findByText('Stripe checkout session initiated.')).toBeDefined();
+    expect(axios.post).toHaveBeenCalledWith('/v1/stripe/payments', {
+      priceId: 'price_abc',
+      quantity: 2,
     });
   });
 

@@ -11,10 +11,8 @@
 - Added custom theme overrides, responsive layout, Header, NavBar, accessible SearchBar with React Hook Form, and axe-core accessibility tests
 - Added application and layout ErrorBoundary handling, ErrorFallback UI, error logging helper, and enhanced search validation messages
 - Added 3-level ErrorBoundary isolation, throwOnError for 5xx API errors, and granular retry alerts for independent UserInfo sections
-- Implemented full Figma dashboard UI and backend integration:
-  - Normalized NestJS backend payloads (`GET /v1/users`, `GET /v1/orders`, `GET /v1/products`) alongside unit-test fixtures
-  - Added accessible, sortable, filterable, searchable, paginated `OrdersTable`
-  - Added 30-day summary cards, `Recent orders`, and `Related products` sidebar cards on `/`
-  - Added `OrderForm` (`POST /v1/orders`) and `/actions` page (`PATCH`/`DELETE /v1/orders/:id`, `PATCH /v1/users/:id`, digital & beta product cards, contact schedule widget)
-  - Added `/products` catalog page (product CRUD, Stripe Checkout via `POST /v1/stripe/payments`, and Stripe sync via `POST /v1/jobs/sync-stripe`)
-  - Added `/settings` account, session token, and job management page with lazy route loading
+- Implemented full Figma dashboard UI and real backend integration:
+  - Removed unused auth/logout/token/password placeholders since backend has no auth layer
+  - Added full CRUD detail pages: `/orders/:id` (`OrderDetails`), `/products/:id` (`ProductDetails`), `/users` (`Users`), and `/users/:id` (`UserDetails`)
+  - Updated `OrderForm`, `OrdersTable`, `Actions`, `Products`, and `Settings` to perform real API mutations and invalidate TanStack Query caches
+- Expanded Vitest unit/integration suite (`utils`, `UserInfo.State`, hooks, router/ErrorBoundary, detail & directory pages), configured `@vitest/coverage-v8` (`pnpm test:coverage`), and added Playwright E2E tests (`pnpm test:e2e`)

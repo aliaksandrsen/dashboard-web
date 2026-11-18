@@ -1,8 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
 import Container from '@mui/material/Container';
+import { QueryClientContext } from '@tanstack/react-query';
+import axios from 'axios';
 import { ErrorBoundary } from 'react-error-boundary';
 import styled from 'styled-components';
 import { useSnapshot } from 'valtio';
@@ -11,26 +13,22 @@ import Header from '../../components/Header';
 import OrdersTable from '../../components/OrdersTable';
 import SafeLink from '../../components/SafeLink';
 import { useProducts } from '../../hooks/useProducts';
+import { useSafeNavigate } from '../../hooks/useSafeNavigate';
 import { formatCurrency, formatShortDate, logError } from '../../utils/helpers';
 import {
-  type ProductItem,
+  type Order,
   changeFilter,
   changeOrderSearch,
   changeProductSearch,
   orderStore,
   productStore,
+  removeOrderFromStore,
   updateOrders,
   updateProducts,
   updateUser,
   userStore,
 } from './UserInfo.State';
 import useUserInfo from './useUserInfo';
-
-const DEFAULT_RELATED_PRODUCTS: ProductItem[] = [
-  { id: 'related-1', name: 'Catfish', price: 24, stockLeft: 45 },
-  { id: 'related-2', name: 'Poop Scooper', price: 203, stockLeft: 3 },
-  { id: 'related-3', name: 'Archer target', price: 699, stockLeft: 32 },
-];
 
 const DashboardGrid = styled.div`
   display: grid;
@@ -61,6 +59,14 @@ const SummarySection = styled.section`
   display: flex;
   flex-direction: column;
   gap: 12px;
+`;
+
+const SummaryHeaderRow = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 `;
 
 const SummaryHeading = styled.h2`
@@ -144,12 +150,19 @@ const SideListItem = styled.li`
   color: #374151;
 `;
 
-const SideItemName = styled.span`
+const SideItemLink = styled(SafeLink)`
   font-weight: 600;
   color: #111827;
+  text-decoration: none;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+
+  &:hover,
+  &:focus-visible {
+    text-decoration: underline;
+    color: #0b57d0;
+  }
 `;
 
 const SideItemMeta = styled.span`
@@ -218,6 +231,12 @@ const UserInfo = () => {
   const userSnap = useSnapshot(userStore);
   const productSnap = useSnapshot(productStore);
   const ordersTableSectionRef = useRef<HTMLDivElement | null>(null);
+  const queryClient = useContext(QueryClientContext);
+  const safeNavigate = useSafeNavigate();
+  const [actionAlert, setActionAlert] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
 
   const {
     orderData,
@@ -252,6 +271,7 @@ const UserInfo = () => {
 
   const onSubmitProductSearch = (searchText: string) => {
     changeProductSearch(searchText);
+    safeNavigate('/products');
   };
 
   const handleViewAllOrders = () => {
@@ -260,10 +280,30 @@ const UserInfo = () => {
     ordersTableSectionRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
   };
 
+  const handleDeleteOrder = async (order: Order) => {
+    setActionAlert(null);
+    const numericId = Number(order.id);
+    try {
+      if (!Number.isNaN(numericId) && numericId > 0) {
+        await axios.delete(`/v1/orders/${numericId}`);
+      }
+      removeOrderFromStore(order.id);
+      await queryClient?.invalidateQueries({ queryKey: ['orderData'] });
+      await queryClient?.invalidateQueries({ queryKey: ['userData'] });
+      setActionAlert({ type: 'success', text: `Order #${order.id} deleted.` });
+    } catch {
+      setActionAlert({ type: 'error', text: `Failed to delete order #${order.id}.` });
+    }
+  };
+
   const recentOrdersPreview = orderSnap.orders.slice(0, 3);
-  const relatedProductsSource =
-    productSnap.products.length > 0 ? productSnap.products : DEFAULT_RELATED_PRODUCTS;
-  const relatedProductsPreview = relatedProductsSource.slice(0, 3);
+  const relatedProductsPreview = productSnap.products.slice(0, 3);
+  const ordersCountDisplay =
+    orderSnap.orders.length > 0 ? orderSnap.orders.length : userSnap.user.recentOrders;
+  const productsCountDisplay =
+    productSnap.products.length > 0 ? productSnap.products.length : userSnap.user.newProducts;
+  const nextDateDisplay =
+    userSnap.user.nextDeliveryDate || orderSnap.orders[0]?.deliveryDate || 'No upcoming';
 
   const renderUserSection = () => {
     if (userIsLoading) {
@@ -316,23 +356,32 @@ const UserInfo = () => {
       <ErrorBoundary FallbackComponent={ErrorFallback} onError={logError}>
         <DashboardGrid>
           <MainColumn>
+            {actionAlert && (
+              <Alert
+                severity={actionAlert.type}
+                role={actionAlert.type === 'error' ? 'alert' : 'status'}
+                onClose={() => setActionAlert(null)}
+              >
+                {actionAlert.text}
+              </Alert>
+            )}
+
             <SummarySection aria-label="Last 30 days summary">
-              <SummaryHeading>In the last 30 days,</SummaryHeading>
+              <SummaryHeaderRow>
+                <SummaryHeading>In the last 30 days,</SummaryHeading>
+                <ActionLinkButton to="/actions">Create New Order</ActionLinkButton>
+              </SummaryHeaderRow>
               <MetricsGrid>
                 <MetricCard>
-                  <MetricValue>{userSnap.user.recentOrders}</MetricValue>
+                  <MetricValue>{ordersCountDisplay}</MetricValue>
                   <MetricLabel>orders made</MetricLabel>
                 </MetricCard>
                 <MetricCard $hideOnMobile>
-                  <MetricValue>
-                    {productSnap.products.length > 0
-                      ? productSnap.products.length
-                      : userSnap.user.newProducts}
-                  </MetricValue>
+                  <MetricValue>{productsCountDisplay}</MetricValue>
                   <MetricLabel>New products</MetricLabel>
                 </MetricCard>
                 <MetricCard>
-                  <MetricValue>{userSnap.user.nextDeliveryDate || 'TBD'}</MetricValue>
+                  <MetricValue>{nextDateDisplay}</MetricValue>
                   <MetricLabel>Next delivery date</MetricLabel>
                 </MetricCard>
               </MetricsGrid>
@@ -345,6 +394,7 @@ const UserInfo = () => {
                 onFilterChange={changeFilter}
                 searchQuery={orderSnap.searchQuery}
                 onSearchChange={changeOrderSearch}
+                onDeleteOrder={handleDeleteOrder}
               />
             </div>
           </MainColumn>
@@ -360,7 +410,7 @@ const UserInfo = () => {
                 ) : (
                   recentOrdersPreview.map((order) => (
                     <SideListItem key={order.id}>
-                      <SideItemName>{order.productName}</SideItemName>
+                      <SideItemLink to={`/orders/${order.id}`}>{order.productName}</SideItemLink>
                       <SideItemMeta>{formatShortDate(order.orderedDate)}</SideItemMeta>
                       <SideItemPrice>{formatCurrency(order.totalAmount)}</SideItemPrice>
                     </SideListItem>
@@ -376,25 +426,22 @@ const UserInfo = () => {
 
             <SideCard aria-label="Related products summary">
               <SideCardTitle>Related products</SideCardTitle>
-              {productSnap.search && (
-                <Alert
-                  severity="info"
-                  onClose={() => changeProductSearch('')}
-                  sx={{ py: 0, px: 1 }}
-                >
-                  Filtered: {productSnap.search}
-                </Alert>
-              )}
               <SideList>
-                {relatedProductsPreview.map((product) => (
-                  <SideListItem key={product.id}>
-                    <SideItemName>{product.name}</SideItemName>
-                    <SideItemMeta>
-                      {product.stockLeft !== undefined ? `${product.stockLeft} left` : 'In stock'}
-                    </SideItemMeta>
-                    <SideItemPrice>{formatCurrency(product.price)}</SideItemPrice>
-                  </SideListItem>
-                ))}
+                {relatedProductsPreview.length === 0 ? (
+                  <li>
+                    <SideItemMeta>No products in catalog yet.</SideItemMeta>
+                  </li>
+                ) : (
+                  relatedProductsPreview.map((product) => (
+                    <SideListItem key={product.id}>
+                      <SideItemLink to={`/products/${product.id}`}>{product.name}</SideItemLink>
+                      <SideItemMeta>
+                        {product.stockLeft !== undefined ? `${product.stockLeft} left` : 'In stock'}
+                      </SideItemMeta>
+                      <SideItemPrice>{formatCurrency(product.price)}</SideItemPrice>
+                    </SideListItem>
+                  ))
+                )}
               </SideList>
               <CardActionWrapper>
                 <ActionLinkButton to="/products">View all products</ActionLinkButton>

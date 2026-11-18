@@ -12,12 +12,16 @@ const ui = () =>
   );
 
 describe('<NavBar />', () => {
-  it('should render semantic navigation links', () => {
+  it('should render semantic navigation links without Logout', () => {
     ui();
 
     expect(screen.getByRole('navigation', { name: 'Main navigation' })).toBeDefined();
     expect(screen.getByRole('link', { name: 'Orders' })).toBeDefined();
     expect(screen.getByRole('link', { name: 'Actions' })).toBeDefined();
+    expect(screen.getByRole('link', { name: 'Products' })).toBeDefined();
+    expect(screen.getByRole('link', { name: 'Users' })).toBeDefined();
+    expect(screen.getByRole('link', { name: 'Settings' })).toBeDefined();
+    expect(screen.queryByRole('link', { name: 'Logout' })).toBeNull();
   });
 
   it('should toggle mobile navigation state when menu button is clicked', () => {
