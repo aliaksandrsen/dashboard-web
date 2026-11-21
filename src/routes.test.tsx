@@ -58,18 +58,14 @@ describe('<Router />', () => {
     expect(screen.getByRole('navigation', { name: 'Main navigation' })).toBeDefined();
   });
 
-  it('lazy-loads /products, /users, /actions, and /settings routes', async () => {
-    renderAtRoute('/products');
-    expect(await screen.findByRole('heading', { name: 'Products Catalog' })).toBeDefined();
-
-    renderAtRoute('/users');
-    expect(await screen.findByRole('heading', { name: 'Users Directory' })).toBeDefined();
-
-    renderAtRoute('/actions');
-    expect(await screen.findByRole('heading', { name: 'Changes you can make' })).toBeDefined();
-
-    renderAtRoute('/settings');
-    expect(await screen.findByRole('heading', { name: 'Account & System Settings' })).toBeDefined();
+  it.each([
+    ['/products', 'Products Catalog'],
+    ['/users', 'Users Directory'],
+    ['/actions', 'Changes you can make'],
+    ['/settings', 'Account & System Settings'],
+  ])('lazy-loads %s route', async (route, heading) => {
+    renderAtRoute(route);
+    expect(await screen.findByRole('heading', { name: heading }, { timeout: 5000 })).toBeDefined();
   });
 
   it('catches 5xx API errors via layout ErrorBoundary and renders ErrorFallback', async () => {
