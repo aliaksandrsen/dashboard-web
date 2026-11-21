@@ -1,0 +1,12 @@
+node_modules
+dist
+dist-ssr
+coverage
+playwright-report
+test-results
+.git
+.gitignore
+.husky
+.vscode
+*.log
+.DS_Store

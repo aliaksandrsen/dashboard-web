@@ -10,7 +10,14 @@ Full-stack React + TypeScript admin dashboard connected to the NestJS backend (`
 - `pnpm install`
 - `pnpm dev`
 
-The app runs on `http://localhost:5173/`.
+The app runs on `http://localhost:8080/`.
+
+## Docker (Chapter 26)
+
+Build and run the containerized frontend on `http://localhost:8080/`:
+
+- `docker build . -t "dashboard-ui:v1.0"`
+- `docker run -d -p 8080:8080 dashboard-ui:v1.0`
 
 ## Scripts
 

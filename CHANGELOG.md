@@ -16,3 +16,4 @@
   - Added full CRUD detail pages: `/orders/:id` (`OrderDetails`), `/products/:id` (`ProductDetails`), `/users` (`Users`), and `/users/:id` (`UserDetails`)
   - Updated `OrderForm`, `OrdersTable`, `Actions`, `Products`, and `Settings` to perform real API mutations and invalidate TanStack Query caches
 - Expanded Vitest unit/integration suite (`utils`, `UserInfo.State`, hooks, router/ErrorBoundary, detail & directory pages), configured `@vitest/coverage-v8` (`pnpm test:coverage`), and added Playwright E2E tests (`pnpm test:e2e`)
+- Added Docker containerization (`Dockerfile`, `.dockerignore`) and Vite preview/server port `8080` configuration (Chapter 26)
