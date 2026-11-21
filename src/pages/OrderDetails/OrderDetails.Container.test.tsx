@@ -5,7 +5,6 @@ import axios from 'axios';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import OrderDetails from '.';
-import { userStore } from '../UserInfo/UserInfo.State';
 
 vi.mock('axios', async (importOriginal) => {
   const actual = await importOriginal<typeof import('axios')>();
@@ -14,7 +13,6 @@ vi.mock('axios', async (importOriginal) => {
     default: {
       ...actual.default,
       get: vi.fn(),
-      patch: vi.fn(),
       delete: vi.fn(),
       isAxiosError: actual.default.isAxiosError,
     },
@@ -30,7 +28,7 @@ const renderOrderDetails = (orderId = '3') => {
       <MemoryRouter initialEntries={[`/orders/${orderId}`]}>
         <Routes>
           <Route path="/orders/:id" element={<OrderDetails />} />
-          <Route path="/" element={<div>Orders Home</div>} />
+          <Route path="/orders" element={<div>Orders Home</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -39,15 +37,6 @@ const renderOrderDetails = (orderId = '3') => {
 
 describe('<OrderDetails />', () => {
   beforeEach(() => {
-    userStore.user = {
-      id: 1,
-      name: 'Antonio West',
-      joinedDate: '2025-01-01',
-      recentOrders: 1,
-      newProducts: 1,
-      nextDeliveryDate: '',
-    };
-
     vi.mocked(axios.get).mockImplementation((url) => {
       if (url === '/v1/orders/3') {
         return Promise.resolve({
@@ -64,21 +53,21 @@ describe('<OrderDetails />', () => {
               email: 'antonio@example.com',
               address: '123 Main',
             },
-            products: [{ id: 'p-1', name: 'Steel Computer', price: 237.13 }],
+            products: [
+              {
+                id: 'p-1',
+                name: 'Steel Computer',
+                price: 237.13,
+                stripeProductId: null,
+                stripePriceId: null,
+                createdAt: '2026-05-01T00:00:00.000Z',
+                updatedAt: '2026-05-01T00:00:00.000Z',
+              },
+            ],
           },
         });
       }
-      if (url === '/v1/products') {
-        return Promise.resolve({ data: [{ id: 'p-1', name: 'Steel Computer', price: 237.13 }] });
-      }
-      if (url === '/v1/users') {
-        return Promise.resolve({
-          data: [
-            { id: 1, name: 'Antonio West', email: 'antonio@example.com', address: '123 Main' },
-          ],
-        });
-      }
-      return Promise.resolve({ data: [] });
+      return Promise.reject(new Error('Not Found'));
     });
   });
 
@@ -86,75 +75,56 @@ describe('<OrderDetails />', () => {
     vi.clearAllMocks();
   });
 
-  it('loads order details and updates order via PATCH /v1/orders/:id', async () => {
-    vi.mocked(axios.patch).mockResolvedValueOnce({ data: { id: 3, total: 500 } });
-
-    renderOrderDetails('3');
-
-    expect((await screen.findAllByText('$237.13')).length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Steel Computer').length).toBeGreaterThan(0);
-
-    fireEvent.change(screen.getByLabelText('Total Amount (USD)'), { target: { value: '500' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save Order Changes' }));
-
-    expect(await screen.findByText('Order #3 updated successfully.')).toBeDefined();
-    await waitFor(() => {
-      expect(axios.patch).toHaveBeenCalledWith('/v1/orders/3', {
-        total: 500,
-        userId: 1,
-        productIds: ['p-1'],
-      });
-    });
-  });
-
-  it('deletes order after confirmation and navigates back to /', async () => {
+  it('renders clean read-only order details with link to /orders/:id/edit and confirms delete', async () => {
     vi.mocked(axios.delete).mockResolvedValueOnce({ data: { id: 3 } });
 
     renderOrderDetails('3');
+
     expect((await screen.findAllByText('$237.13')).length).toBeGreaterThan(0);
+    expect(screen.getByText('Steel Computer')).toBeDefined();
+    expect(screen.getByRole('link', { name: 'Edit Order' }).getAttribute('href')).toBe(
+      '/orders/3/edit',
+    );
+    expect(screen.queryByRole('button', { name: 'Save Order Changes' })).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete Order' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm Delete' }));
+    expect(screen.getByText('Delete order #3?')).toBeDefined();
+
+    const confirmButtons = screen.getAllByRole('button', { name: 'Delete Order' });
+    fireEvent.click(confirmButtons[confirmButtons.length - 1]);
 
     expect(await screen.findByText('Orders Home')).toBeDefined();
-    expect(axios.delete).toHaveBeenCalledWith('/v1/orders/3');
+    await waitFor(() => {
+      expect(axios.delete).toHaveBeenCalledWith('/v1/orders/3');
+    });
   });
 
-  it('shows loading indicator, handles fetch error with retry, and displays PATCH error', async () => {
-    let shouldFailOrder999 = true;
-
-    vi.mocked(axios.get).mockImplementation((url) => {
-      if (url === '/v1/orders/99') {
-        return new Promise(() => {});
+  it('shows error state and retries when fetch fails', async () => {
+    let shouldFail = true;
+    vi.mocked(axios.get).mockImplementation(() => {
+      if (shouldFail) {
+        return Promise.reject(new Error('Not Found'));
       }
-      if (url === '/v1/orders/999') {
-        if (shouldFailOrder999) {
-          return Promise.reject(new Error('Not Found'));
-        }
-        return Promise.resolve({
-          data: { id: 999, total: 100, userId: 1, products: [] },
-        });
-      }
-      if (url === '/v1/products' || url === '/v1/users') {
-        return Promise.resolve({ data: [] });
-      }
-      return Promise.reject(new Error(`Unexpected GET ${url}`));
+      return Promise.resolve({
+        data: {
+          id: 99,
+          total: 100,
+          stripeInvoiceId: null,
+          createdAt: '2026-05-15T00:00:00.000Z',
+          updatedAt: '2026-05-15T00:00:00.000Z',
+          userId: null,
+          user: null,
+          products: [],
+        },
+      });
     });
 
-    const { unmount } = renderOrderDetails('99');
-    expect(screen.getByTestId('order-details-loading')).toBeDefined();
-    unmount();
+    renderOrderDetails('99');
+    expect(await screen.findByText('Order #99 could not be loaded.')).toBeDefined();
 
-    renderOrderDetails('999');
-    expect(await screen.findByText('Order #999 could not be loaded.')).toBeDefined();
-
-    shouldFailOrder999 = false;
+    shouldFail = false;
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(await screen.findByText('$100.00')).toBeDefined();
-
-    vi.mocked(axios.patch).mockRejectedValueOnce(new Error('Patch failed'));
-    fireEvent.click(screen.getByRole('button', { name: 'Save Order Changes' }));
-    expect(await screen.findByText('Failed to update order.')).toBeDefined();
   });
 
   it('has no axe accessibility violations', async () => {

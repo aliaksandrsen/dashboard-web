@@ -1,38 +1,29 @@
-import { useContext } from 'react';
-import { QueryClient, QueryClientContext, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
-import { type UserInfoData, normalizeUsersList } from '../pages/UserInfo/UserInfo.State';
-
-const fallbackQueryClient = new QueryClient();
+import type { ApiUser } from '../types/api';
+import { isServerError } from '../utils/helpers';
 
 export function useUsers(search = '') {
-  const contextClient = useContext(QueryClientContext);
-  const hasProvider = Boolean(contextClient);
+  const normalizedSearch = search.trim();
 
-  const {
-    isLoading: usersAreLoading,
-    error: usersError,
-    data: usersData,
-    refetch: refetchUsers,
-  } = useQuery<UserInfoData[]>(
-    {
-      queryKey: ['usersList', search],
-      staleTime: 60_000,
-      enabled: hasProvider,
-      queryFn: () =>
-        axios
-          .get<unknown>('/v1/users', {
-            params: search.trim() ? { search: search.trim() } : undefined,
-          })
-          .then((res) => normalizeUsersList(res.data)),
-    },
-    contextClient ?? fallbackQueryClient,
-  );
+  return useQuery<ApiUser[]>({
+    queryKey: ['users', normalizedSearch],
+    staleTime: 60_000,
+    queryFn: () =>
+      axios
+        .get<ApiUser[]>('/v1/users', {
+          params: normalizedSearch ? { search: normalizedSearch } : undefined,
+        })
+        .then((res) => (Array.isArray(res.data) ? res.data : [])),
+    throwOnError: isServerError,
+  });
+}
 
-  return {
-    usersAreLoading,
-    usersError,
-    usersData,
-    refetchUsers,
-  };
+export function useUser(id?: string) {
+  return useQuery<ApiUser>({
+    queryKey: ['user', id],
+    enabled: Boolean(id),
+    queryFn: () => axios.get<ApiUser>(`/v1/users/${id}`).then((res) => res.data),
+    throwOnError: isServerError,
+  });
 }

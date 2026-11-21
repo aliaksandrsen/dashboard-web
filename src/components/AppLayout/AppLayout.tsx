@@ -1,4 +1,5 @@
 import Box, { type BoxProps } from '@mui/material/Box';
+import Container from '@mui/material/Container';
 import { QueryErrorResetBoundary } from '@tanstack/react-query';
 import { ErrorBoundary } from 'react-error-boundary';
 import { Outlet, useLocation } from 'react-router-dom';
@@ -9,6 +10,8 @@ import NavBar from '../NavBar';
 
 const AppContainer = styled(Box)<BoxProps>`
   display: flex;
+  min-height: 100vh;
+  background-color: #f8fafc;
 
   @media (max-width: 599.95px) {
     flex-direction: column;
@@ -32,18 +35,20 @@ const AppLayout = () => {
     <AppContainer>
       <NavBar />
       <CurrentScreen component="main">
-        <QueryErrorResetBoundary>
-          {({ reset }) => (
-            <ErrorBoundary
-              FallbackComponent={ErrorFallback}
-              onError={logError}
-              onReset={reset}
-              resetKeys={[pathname]}
-            >
-              <Outlet />
-            </ErrorBoundary>
-          )}
-        </QueryErrorResetBoundary>
+        <Container maxWidth="xl">
+          <QueryErrorResetBoundary>
+            {({ reset }) => (
+              <ErrorBoundary
+                FallbackComponent={ErrorFallback}
+                onError={logError}
+                onReset={reset}
+                resetKeys={[pathname]}
+              >
+                <Outlet />
+              </ErrorBoundary>
+            )}
+          </QueryErrorResetBoundary>
+        </Container>
       </CurrentScreen>
     </AppContainer>
   );

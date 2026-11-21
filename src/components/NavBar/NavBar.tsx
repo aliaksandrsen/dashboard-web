@@ -2,7 +2,8 @@ import { useState } from 'react';
 import GridViewRoundedIcon from '@mui/icons-material/GridViewRounded';
 import GroupOutlinedIcon from '@mui/icons-material/GroupOutlined';
 import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
-import PersonOutlineRoundedIcon from '@mui/icons-material/PersonOutlineRounded';
+import MenuRoundedIcon from '@mui/icons-material/MenuRounded';
+import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined';
 import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
 import { Box, Button, Drawer, Typography } from '@mui/material';
 import { Link, useLocation } from 'react-router-dom';
@@ -16,12 +17,20 @@ const SidebarInner = styled.div`
   box-sizing: border-box;
 `;
 
-const BrandTitle = styled(Typography)`
+const BrandLink = styled(Link)`
+  display: inline-block;
   font-weight: 700;
   font-size: 1.375rem;
-  color: #374151;
+  color: #0f172a;
   padding: 0 12px 24px;
   letter-spacing: -0.02em;
+  text-decoration: none;
+
+  &:focus-visible {
+    outline: 2px solid #0b57d0;
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
 `;
 
 const Nav = styled.nav`
@@ -37,7 +46,7 @@ const NavList = styled.ul`
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 `;
 
 const NavLink = styled(Link)`
@@ -45,18 +54,20 @@ const NavLink = styled(Link)`
   align-items: center;
   gap: 12px;
   padding: 10px 14px;
-  border-radius: 6px;
-  color: #4b5563;
+  border-radius: 8px;
+  border-left: 4px solid transparent;
+  color: #334155;
   text-decoration: none;
   font-weight: 500;
+  font-size: 0.9375rem;
   transition:
     background-color 0.15s ease,
     color 0.15s ease;
 
   &:hover,
   &:focus-visible {
-    background-color: #e5e7eb;
-    color: #111827;
+    background-color: #e2e8f0;
+    color: #0f172a;
   }
 
   &:focus-visible {
@@ -65,40 +76,43 @@ const NavLink = styled(Link)`
   }
 
   &[aria-current='page'] {
-    background-color: #6b7280;
-    color: #ffffff;
-    font-weight: 600;
-    border-left: 4px solid #1f2937;
+    background-color: #dbeafe;
+    color: #1e3a8a;
+    font-weight: 700;
+    border-left-color: #1d4ed8;
   }
 `;
 
-const MobileToggleButton = styled(Button)`
-  margin: 8px;
+const MobileBar = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background-color: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
 `;
 
 const NavContent = ({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) => (
   <SidebarInner>
-    <BrandTitle variant="h6">TestsTore</BrandTitle>
+    <BrandLink to="/" onClick={onNavigate}>
+      TestsTore
+    </BrandLink>
     <Nav aria-label="Main navigation">
       <NavList>
         <li>
-          <NavLink
-            to="/"
-            aria-current={pathname === '/' || pathname.startsWith('/orders') ? 'page' : undefined}
-            onClick={onNavigate}
-          >
+          <NavLink to="/" aria-current={pathname === '/' ? 'page' : undefined} onClick={onNavigate}>
             <GridViewRoundedIcon fontSize="small" aria-hidden="true" />
-            <span>Orders</span>
+            <span>Dashboard</span>
           </NavLink>
         </li>
         <li>
           <NavLink
-            to="/actions"
-            aria-current={pathname === '/actions' ? 'page' : undefined}
+            to="/orders"
+            aria-current={pathname.startsWith('/orders') ? 'page' : undefined}
             onClick={onNavigate}
           >
-            <PersonOutlineRoundedIcon fontSize="small" aria-hidden="true" />
-            <span>Actions</span>
+            <ReceiptLongOutlinedIcon fontSize="small" aria-hidden="true" />
+            <span>Orders</span>
           </NavLink>
         </li>
         <li>
@@ -148,14 +162,25 @@ const NavBar = () => {
 
   return (
     <Box component="aside" aria-label="Sidebar navigation">
-      <MobileToggleButton
-        aria-label="Toggle navigation"
-        aria-expanded={isMobileOpen}
-        onClick={toggleMobileNav}
-        sx={{ display: { xs: 'inline-flex', sm: 'none' } }}
-      >
-        Menu
-      </MobileToggleButton>
+      <Box sx={{ display: { xs: 'block', sm: 'none' } }}>
+        <MobileBar>
+          <Typography variant="h6" component="span" sx={{ fontWeight: 700, color: '#0f172a' }}>
+            TestsTore
+          </Typography>
+          <Button
+            type="button"
+            variant="outlined"
+            color="secondary"
+            size="small"
+            startIcon={<MenuRoundedIcon aria-hidden="true" />}
+            aria-label="Toggle navigation"
+            aria-expanded={isMobileOpen}
+            onClick={toggleMobileNav}
+          >
+            Menu
+          </Button>
+        </MobileBar>
+      </Box>
 
       <Drawer
         anchor="left"

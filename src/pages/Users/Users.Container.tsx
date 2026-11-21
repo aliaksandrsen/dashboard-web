@@ -1,425 +1,293 @@
-import { useContext, useEffect, useId, useState } from 'react';
+import { useId, useState } from 'react';
+import SearchIcon from '@mui/icons-material/Search';
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
-import Chip from '@mui/material/Chip';
 import CircularProgress from '@mui/material/CircularProgress';
-import Container from '@mui/material/Container';
-import { QueryClientContext } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { useForm } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import styled from 'styled-components';
-import { useSnapshot } from 'valtio';
-import Header from '../../components/Header';
-import SafeLink from '../../components/SafeLink';
-import { useUsers } from '../../hooks/useUsers';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import {
-  type UserInfoData,
-  changeProductSearch,
-  setActiveUser,
-  updateUsersList,
-  userStore,
-} from '../UserInfo/UserInfo.State';
+  CardPanel,
+  EmptyStateText,
+  FilterToolbar,
+  PageHeaderActions,
+  PageHeaderRow,
+  PageHeaderText,
+  PageSubtitle,
+  PageTitle,
+  PageWrapper,
+  SearchInputBox,
+  ToolbarSearchInput,
+  VisuallyHidden,
+} from '../../components/ui/PagePrimitives';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { useFlashMessage } from '../../hooks/useFlashMessage';
+import { useUsers } from '../../hooks/useUsers';
+import type { ApiUser } from '../../types/api';
+import { extractApiError } from '../../utils/helpers';
 
-interface CreateUserValues {
-  name: string;
-  email: string;
-  address: string;
-}
+const TableWrapper = styled.div`
+  overflow-x: auto;
+  max-inline-size: 100%;
 
-const PageBody = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  padding-bottom: 40px;
-`;
-
-const TopBar = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-`;
-
-const PageTitle = styled.h1`
-  margin: 0;
-  font-size: 1.375rem;
-  font-weight: 600;
-  color: #111827;
-`;
-
-const TwoColumnGrid = styled.div`
-  display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
-  gap: 24px;
-  align-items: start;
-
-  @media (max-width: 960px) {
-    grid-template-columns: minmax(0, 1fr);
+  &:focus-visible {
+    outline: 2px solid #0b57d0;
+    outline-offset: 2px;
   }
 `;
 
-const Panel = styled.section`
-  background-color: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+const StyledTable = styled.table`
+  width: 100%;
+  min-inline-size: 680px;
+  border-collapse: separate;
+  border-spacing: 0;
+  text-align: left;
+  font-size: 0.875rem;
 `;
 
-const PanelTitle = styled.h2`
-  margin: 0;
-  font-size: 1.0625rem;
-  font-weight: 600;
-  color: #111827;
-`;
-
-const UsersList = styled.ul`
-  list-style: none;
-  margin: 0;
+const TableCaption = styled.caption`
+  position: absolute;
+  clip-path: inset(50%);
+  overflow: hidden;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  border: 0;
+  white-space: nowrap;
 `;
 
-const UserCard = styled.li`
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  padding: 16px;
-  background-color: #f9fafb;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-`;
-
-const UserMeta = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-`;
-
-const UserNameLink = styled(SafeLink)`
+const Th = styled.th`
+  padding: 12px;
+  border-bottom: 1px solid #e2e8f0;
+  background-color: #f8fafc;
+  color: #334155;
   font-weight: 600;
-  font-size: 1rem;
-  color: #111827;
+  white-space: nowrap;
+`;
+
+const RowTh = styled.th`
+  padding: 14px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  font-weight: 600;
+  color: #0f172a;
+`;
+
+const Td = styled.td`
+  padding: 14px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155;
+  vertical-align: middle;
+`;
+
+const UserLink = styled(Link)`
+  color: #1d4ed8;
+  font-weight: 600;
   text-decoration: none;
 
   &:hover,
   &:focus-visible {
     text-decoration: underline;
-    color: #0b57d0;
   }
 `;
 
-const UserSubtext = styled.span`
-  font-size: 0.8125rem;
-  color: #6b7280;
-`;
-
-const CardActions = styled.div`
-  display: flex;
-  flex-wrap: wrap;
+const RowActions = styled.div`
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-`;
-
-const FormStack = styled.form`
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-`;
-
-const FieldGroup = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-`;
-
-const FieldLabel = styled.label`
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #111827;
-`;
-
-const StyledInput = styled.input`
-  font: inherit;
-  font-size: max(1rem, 0.875rem);
-  min-height: 42px;
-  padding: 8px 12px;
-  border: 1px solid #767676;
-  border-radius: 6px;
-  background-color: #ffffff;
-  color: #111827;
-
-  &:focus-visible {
-    outline: 2px solid #0b57d0;
-    outline-offset: 1px;
-  }
-`;
-
-const ErrorText = styled.span`
-  color: #d32f2f;
-  font-size: 0.75rem;
+  white-space: nowrap;
 `;
 
 const Users = () => {
-  const userSnap = useSnapshot(userStore);
-  const navigate = useNavigate();
-  const queryClient = useContext(QueryClientContext);
+  useDocumentTitle('Users');
+
+  const queryClient = useQueryClient();
+  const { flash, setFlash, clearFlash } = useFlashMessage();
   const idPrefix = useId();
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusBanner, setStatusBanner] = useState<{
-    type: 'success' | 'error';
-    text: string;
-  } | null>(null);
 
-  const { usersAreLoading, usersError, usersData, refetchUsers } = useUsers(searchTerm);
+  const [searchInput, setSearchInput] = useState('');
+  const debouncedSearch = useDebouncedValue(searchInput, 250);
+  const [userToDelete, setUserToDelete] = useState<ApiUser | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  useEffect(() => {
-    if (usersData && !searchTerm.trim()) {
-      updateUsersList(usersData);
-    }
-  }, [usersData, searchTerm]);
+  const usersQuery = useUsers(debouncedSearch);
+  const users = usersQuery.data ?? [];
 
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors, isSubmitting },
-  } = useForm<CreateUserValues>({
-    mode: 'onBlur',
-    defaultValues: { name: '', email: '', address: '' },
-  });
-
-  const onCreateUser = async (values: CreateUserValues) => {
-    setStatusBanner(null);
+  const handleConfirmDelete = async () => {
+    if (!userToDelete) return;
+    setIsDeleting(true);
     try {
-      const response = await axios.post('/v1/users', {
-        name: values.name.trim(),
-        email: values.email.trim(),
-        address: values.address.trim(),
-      });
-      await queryClient?.invalidateQueries({ queryKey: ['usersList'] });
-      await queryClient?.invalidateQueries({ queryKey: ['userData'] });
-      await refetchUsers();
-      reset();
-      setStatusBanner({
-        type: 'success',
-        text: `User "${response.data?.name ?? values.name}" created (#${response.data?.id ?? ''}).`,
-      });
-    } catch (err) {
-      const msg = axios.isAxiosError(err)
-        ? (err.response?.data?.message ?? 'Failed to create user.')
-        : 'Failed to create user.';
-      setStatusBanner({
+      await axios.delete(`/v1/users/${userToDelete.id}`);
+      await queryClient.invalidateQueries({ queryKey: ['users'] });
+      await queryClient.invalidateQueries({ queryKey: ['orders'] });
+      setFlash({ type: 'success', text: `Deleted user "${userToDelete.name}".` });
+      setUserToDelete(null);
+    } catch (error) {
+      setFlash({
         type: 'error',
-        text: Array.isArray(msg) ? msg.join(', ') : String(msg),
+        text: extractApiError(error, `Failed to delete user "${userToDelete.name}".`),
       });
-    }
-  };
-
-  const handleDeleteUser = async (user: UserInfoData) => {
-    if (!user.id) return;
-    setStatusBanner(null);
-    try {
-      await axios.delete(`/v1/users/${user.id}`);
-      await queryClient?.invalidateQueries({ queryKey: ['usersList'] });
-      await queryClient?.invalidateQueries({ queryKey: ['userData'] });
-      await refetchUsers();
-      setStatusBanner({ type: 'success', text: `Deleted user "${user.name}".` });
-    } catch {
-      setStatusBanner({ type: 'error', text: `Failed to delete user "${user.name}".` });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
   const searchInputId = `${idPrefix}-users-search`;
-  const nameId = `${idPrefix}-user-name`;
-  const emailId = `${idPrefix}-user-email`;
-  const addressId = `${idPrefix}-user-address`;
-
-  const visibleUsers = usersData ?? [];
 
   return (
-    <Container component="section" maxWidth="xl">
-      <Header
-        userName={userSnap.user.name}
-        joinedDate={userSnap.user.joinedDate}
-        onSubmitSearch={(query) => {
-          changeProductSearch(query);
-          navigate('/products');
-        }}
-      />
+    <PageWrapper>
+      <PageHeaderRow>
+        <PageHeaderText>
+          <PageTitle>Users</PageTitle>
+          <PageSubtitle>
+            {usersQuery.isLoading
+              ? 'Loading users...'
+              : `${users.length} registered customer${users.length === 1 ? '' : 's'}`}
+          </PageSubtitle>
+        </PageHeaderText>
+        <PageHeaderActions>
+          <Button component={Link} to="/users/new" variant="contained" color="primary">
+            Create User
+          </Button>
+        </PageHeaderActions>
+      </PageHeaderRow>
 
-      <PageBody>
-        <TopBar>
-          <PageTitle>Users Directory</PageTitle>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <FieldLabel htmlFor={searchInputId}>Filter users</FieldLabel>
-            <StyledInput
-              id={searchInputId}
-              type="search"
-              placeholder="Search by name or email..."
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-            />
-          </div>
-        </TopBar>
+      {flash && (
+        <Alert
+          severity={flash.type}
+          role={flash.type === 'error' ? 'alert' : 'status'}
+          onClose={clearFlash}
+        >
+          {flash.text}
+        </Alert>
+      )}
 
-        {statusBanner && (
-          <Alert
-            severity={statusBanner.type}
-            role={statusBanner.type === 'error' ? 'alert' : 'status'}
-            onClose={() => setStatusBanner(null)}
+      <FilterToolbar aria-label="Filter users">
+        <SearchInputBox>
+          <SearchIcon fontSize="small" color="action" aria-hidden="true" />
+          <label htmlFor={searchInputId}>
+            <VisuallyHidden>Search users</VisuallyHidden>
+          </label>
+          <ToolbarSearchInput
+            id={searchInputId}
+            type="search"
+            placeholder="Search users by name or email..."
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            autoCorrect="off"
+            autoCapitalize="none"
+            spellCheck={false}
+          />
+        </SearchInputBox>
+
+        {searchInput && (
+          <Button
+            type="button"
+            variant="outlined"
+            color="secondary"
+            onClick={() => setSearchInput('')}
           >
-            {statusBanner.text}
-          </Alert>
+            Clear
+          </Button>
         )}
+      </FilterToolbar>
 
-        <TwoColumnGrid>
-          <Panel aria-label="Registered users">
-            <PanelTitle>All Users</PanelTitle>
-            {usersAreLoading ? (
-              <CircularProgress data-testid="users-loading-circle" />
-            ) : usersError ? (
-              <Alert
-                severity="error"
-                action={
-                  <Button size="small" onClick={() => refetchUsers()}>
-                    Retry
-                  </Button>
-                }
-              >
-                Failed to load users
-              </Alert>
-            ) : visibleUsers.length === 0 ? (
-              <UserSubtext>No users found.</UserSubtext>
-            ) : (
-              <UsersList>
-                {visibleUsers.map((user) => {
-                  const isActive = user.id !== undefined && user.id === userSnap.activeUserId;
-                  return (
-                    <UserCard key={user.id ?? user.email}>
-                      <UserMeta>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <UserNameLink to={`/users/${user.id}`}>{user.name}</UserNameLink>
-                          {isActive && <Chip label="Active" size="small" color="primary" />}
-                        </div>
-                        <UserSubtext>
-                          {user.email} · {user.address} · {user.recentOrders} orders
-                        </UserSubtext>
-                      </UserMeta>
-                      <CardActions>
-                        {!isActive && user.id !== undefined && (
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            type="button"
-                            onClick={() => {
-                              setActiveUser(user.id!);
-                              setStatusBanner({
-                                type: 'success',
-                                text: `Active user switched to "${user.name}".`,
-                              });
-                            }}
-                          >
-                            Set Active
-                          </Button>
-                        )}
+      <CardPanel>
+        {usersQuery.isLoading ? (
+          <CircularProgress data-testid="users-loading-circle" />
+        ) : usersQuery.error ? (
+          <Alert
+            severity="error"
+            action={
+              <Button size="small" onClick={() => void usersQuery.refetch()}>
+                Retry
+              </Button>
+            }
+          >
+            Failed to load users.
+          </Alert>
+        ) : users.length === 0 ? (
+          <EmptyStateText>
+            {searchInput
+              ? `No users found matching "${searchInput}".`
+              : 'No users registered yet. Click "Create User" to add your first customer.'}
+          </EmptyStateText>
+        ) : (
+          <TableWrapper tabIndex={0} role="region" aria-labelledby="users-table-caption">
+            <StyledTable aria-label="users-table">
+              <TableCaption id="users-table-caption">Registered users</TableCaption>
+              <thead>
+                <tr>
+                  <Th scope="col">Name</Th>
+                  <Th scope="col">Email</Th>
+                  <Th scope="col">Address</Th>
+                  <Th scope="col">Orders</Th>
+                  <Th scope="col">Actions</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((user) => (
+                  <tr key={user.id}>
+                    <RowTh scope="row">
+                      <UserLink to={`/users/${user.id}`}>{user.name}</UserLink>
+                    </RowTh>
+                    <Td>{user.email}</Td>
+                    <Td>{user.address}</Td>
+                    <Td>{user.orders?.length ?? 0}</Td>
+                    <Td>
+                      <RowActions>
                         <Button
                           size="small"
                           variant="outlined"
-                          component={SafeLink}
+                          color="secondary"
+                          component={Link}
                           to={`/users/${user.id}`}
                         >
-                          Details
+                          View
                         </Button>
                         <Button
                           size="small"
-                          color="error"
                           variant="outlined"
+                          color="primary"
+                          component={Link}
+                          to={`/users/${user.id}/edit`}
+                          aria-label={`Edit ${user.name}`}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="error"
                           type="button"
                           aria-label={`Delete ${user.name}`}
-                          onClick={() => handleDeleteUser(user)}
+                          onClick={() => setUserToDelete(user)}
                         >
                           Delete
                         </Button>
-                      </CardActions>
-                    </UserCard>
-                  );
-                })}
-              </UsersList>
-            )}
-          </Panel>
+                      </RowActions>
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </StyledTable>
+          </TableWrapper>
+        )}
+      </CardPanel>
 
-          <Panel aria-labelledby={`${idPrefix}-create-user-title`}>
-            <PanelTitle id={`${idPrefix}-create-user-title`}>Create User</PanelTitle>
-            <FormStack
-              aria-labelledby={`${idPrefix}-create-user-title`}
-              noValidate
-              onSubmit={handleSubmit(onCreateUser)}
-            >
-              <FieldGroup>
-                <FieldLabel htmlFor={nameId}>Full Name</FieldLabel>
-                <StyledInput
-                  id={nameId}
-                  type="text"
-                  autoComplete="name"
-                  required
-                  aria-invalid={errors.name ? 'true' : 'false'}
-                  {...register('name', { required: 'Name is required' })}
-                />
-                {errors.name && <ErrorText>{errors.name.message}</ErrorText>}
-              </FieldGroup>
-
-              <FieldGroup>
-                <FieldLabel htmlFor={emailId}>Email Address</FieldLabel>
-                <StyledInput
-                  id={emailId}
-                  type="email"
-                  autoComplete="email"
-                  autoCorrect="off"
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  required
-                  aria-invalid={errors.email ? 'true' : 'false'}
-                  {...register('email', {
-                    required: 'Email is required',
-                    pattern: {
-                      value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-                      message: 'Please enter a valid email address',
-                    },
-                  })}
-                />
-                {errors.email && <ErrorText>{errors.email.message}</ErrorText>}
-              </FieldGroup>
-
-              <FieldGroup>
-                <FieldLabel htmlFor={addressId}>Shipping Address</FieldLabel>
-                <StyledInput
-                  id={addressId}
-                  type="text"
-                  autoComplete="street-address"
-                  required
-                  aria-invalid={errors.address ? 'true' : 'false'}
-                  {...register('address', { required: 'Address is required' })}
-                />
-                {errors.address && <ErrorText>{errors.address.message}</ErrorText>}
-              </FieldGroup>
-
-              <Button type="submit" variant="contained" disabled={isSubmitting}>
-                {isSubmitting ? 'Creating...' : 'Create User'}
-              </Button>
-            </FormStack>
-          </Panel>
-        </TwoColumnGrid>
-      </PageBody>
-    </Container>
+      <ConfirmDialog
+        open={Boolean(userToDelete)}
+        title={`Delete "${userToDelete?.name ?? ''}"?`}
+        description="This permanently deletes the user account. Any associated orders will remain as unassigned."
+        confirmLabel="Delete User"
+        isConfirming={isDeleting}
+        onConfirm={() => void handleConfirmDelete()}
+        onCancel={() => setUserToDelete(null)}
+      />
+    </PageWrapper>
   );
 };
 

@@ -1,242 +1,148 @@
-import { useContext, useEffect, useId, useState } from 'react';
+import { useId, useState } from 'react';
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
-import { QueryClientContext } from '@tanstack/react-query';
-import axios from 'axios';
 import { useForm } from 'react-hook-form';
+import { Link } from 'react-router-dom';
 import styled from 'styled-components';
-import SafeLink from '../../components/SafeLink';
 import {
-  type Order,
-  type ProductItem,
-  type UserInfoData,
-  addOrderToStore,
-  createFallbackOrder,
-  normalizeOrdersData,
-} from '../../pages/UserInfo/UserInfo.State';
+  FieldError,
+  FieldGroup,
+  FieldHint,
+  FieldLabel,
+  FormActionsRow,
+  FormCardPanel,
+  FormStack,
+  SelectInput,
+  TextInput,
+} from '../../components/ui/PagePrimitives';
+import type { ApiProduct, ApiUser } from '../../types/api';
 import { formatCurrency } from '../../utils/helpers';
 
-export interface OrderFormProps {
-  products?: ProductItem[];
-  users?: UserInfoData[];
-  defaultUserId?: number;
-  onOrderCreated?: (order: Order) => void;
+export interface OrderFormSubmitValues {
+  total: number;
+  userId: number | null;
+  stripeInvoiceId: string | null;
+  productIds: string[];
 }
 
-interface OrderFormValues {
-  userId: string;
-  total: number;
+export interface OrderFormProps {
+  mode: 'create' | 'edit';
+  products: readonly ApiProduct[];
+  users: readonly ApiUser[];
+  initialValues?: {
+    userId?: number | null;
+    total?: number | string;
+    stripeInvoiceId?: string | null;
+    productIds?: string[];
+  };
+  cancelTo: string;
+  submitLabel?: string;
+  submitError?: string | null;
+  onSubmitOrder: (values: OrderFormSubmitValues) => Promise<void>;
+}
+
+interface InternalFormValues {
+  total: string;
   stripeInvoiceId: string;
 }
 
-const FormCard = styled.section`
-  background-color: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 20px;
-`;
-
-const FormTitle = styled.h2`
-  margin: 0 0 4px;
-  font-size: 1.125rem;
-  font-weight: 600;
-  color: #111827;
-`;
-
-const FormSubtitle = styled.p`
-  margin: 0 0 16px;
-  font-size: 0.875rem;
-  color: #6b7280;
-`;
-
-const StyledForm = styled.form`
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  max-width: 520px;
-`;
-
-const FieldGroup = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 4px;
-`;
-
-const FieldLabel = styled.label`
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #111827;
-`;
-
-const TextInput = styled.input`
-  font: inherit;
-  font-size: max(1rem, 0.875rem);
-  min-height: 44px;
-  padding: 8px 12px;
-  border: 1px solid #767676;
-  border-radius: 6px;
-  background-color: #ffffff;
-  color: #111827;
-  box-sizing: border-box;
-
-  &:focus-visible {
-    outline: 3px solid #0b57d0;
-    outline-offset: 1px;
-  }
-
-  &[aria-invalid='true'] {
-    border-color: #d32f2f;
-  }
-`;
-
-const SelectInput = styled.select`
-  font: inherit;
-  font-size: max(1rem, 0.875rem);
-  min-height: 44px;
-  padding: 8px 12px;
-  border: 1px solid #767676;
-  border-radius: 6px;
-  background-color: #ffffff;
-  color: #111827;
-  box-sizing: border-box;
-
-  &:focus-visible {
-    outline: 3px solid #0b57d0;
-    outline-offset: 1px;
-  }
-`;
-
 const ProductsFieldset = styled.fieldset`
-  border: 1px solid #e5e7eb;
+  border: 1px solid #cbd5e1;
   border-radius: 8px;
   padding: 12px;
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  max-height: 200px;
+  gap: 10px;
+  max-height: 240px;
   overflow-y: auto;
 `;
 
 const ProductsLegend = styled.legend`
   font-size: 0.875rem;
-  font-weight: 500;
-  color: #111827;
-  padding: 0 4px;
+  font-weight: 600;
+  color: #0f172a;
+  padding: 0 6px;
 `;
 
 const CheckboxRow = styled.label`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  font-size: 0.875rem;
-  color: #111827;
+  gap: 12px;
+  font-size: 0.9375rem;
+  color: #0f172a;
   cursor: pointer;
+  min-height: 32px;
 `;
 
 const CheckboxLeft = styled.span`
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-`;
-
-const FieldError = styled.span`
-  color: #d32f2f;
-  font-size: 0.75rem;
+  gap: 10px;
 `;
 
 const OrderForm = ({
-  products = [],
-  users = [],
-  defaultUserId,
-  onOrderCreated,
+  mode,
+  products,
+  users,
+  initialValues,
+  cancelTo,
+  submitLabel,
+  submitError,
+  onSubmitOrder,
 }: OrderFormProps) => {
-  const formHeadingId = useId();
   const baseId = useId();
-  const queryClient = useContext(QueryClientContext);
-  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
-  const [createdOrder, setCreatedOrder] = useState<Order | null>(null);
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [selectedUserId, setSelectedUserId] = useState<string>(
+    initialValues?.userId ? String(initialValues.userId) : '',
+  );
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>(
+    initialValues?.productIds ?? [],
+  );
 
   const {
     register,
     handleSubmit,
     setValue,
-    reset,
     formState: { errors, isSubmitting },
-  } = useForm<OrderFormValues>({
+  } = useForm<InternalFormValues>({
     mode: 'onBlur',
     reValidateMode: 'onChange',
+    shouldFocusError: true,
     defaultValues: {
-      userId: defaultUserId ? String(defaultUserId) : '',
-      total: 49.99,
-      stripeInvoiceId: '',
+      total: initialValues?.total !== undefined ? String(initialValues.total) : '',
+      stripeInvoiceId: initialValues?.stripeInvoiceId ?? '',
     },
   });
 
-  useEffect(() => {
-    if (defaultUserId !== undefined) {
-      setValue('userId', String(defaultUserId));
-    }
-  }, [defaultUserId, setValue]);
-
-  const toggleProductSelection = (product: ProductItem) => {
+  const toggleProductSelection = (product: ApiProduct) => {
     setSelectedProductIds((prev) => {
       const exists = prev.includes(product.id);
       const nextIds = exists ? prev.filter((id) => id !== product.id) : [...prev, product.id];
-      if (nextIds.length > 0) {
-        const sum = nextIds.reduce((acc, id) => {
-          const item = products.find((p) => p.id === id);
-          return acc + (item?.price ?? 0);
-        }, 0);
-        setValue('total', Number(sum.toFixed(2)), { shouldValidate: true });
-      }
+      const sum = nextIds.reduce((acc, id) => {
+        const item = products.find((p) => p.id === id);
+        return acc + (item?.price ?? 0);
+      }, 0);
+
+      setValue('total', nextIds.length > 0 ? String(Number(sum.toFixed(2))) : '', {
+        shouldValidate: nextIds.length > 0,
+      });
+
       return nextIds;
     });
   };
 
-  const onSubmit = async (values: OrderFormValues) => {
-    setCreatedOrder(null);
-    setSubmitError(null);
-
+  const onSubmit = async (values: InternalFormValues) => {
     const parsedTotal = Number(values.total);
-    const parsedUserId = values.userId ? Number(values.userId) : undefined;
+    const parsedUserId = selectedUserId ? Number(selectedUserId) : null;
     const trimmedInvoice = values.stripeInvoiceId.trim();
 
-    try {
-      const response = await axios.post('/v1/orders', {
-        total: parsedTotal,
-        ...(parsedUserId && !Number.isNaN(parsedUserId) && parsedUserId > 0
-          ? { userId: parsedUserId }
-          : {}),
-        ...(trimmedInvoice ? { stripeInvoiceId: trimmedInvoice } : {}),
-        ...(selectedProductIds.length > 0 ? { productIds: selectedProductIds } : {}),
-      });
-
-      const normalized = normalizeOrdersData([response.data]);
-      const nextOrder: Order = normalized[0] ?? createFallbackOrder(`Order`, parsedTotal);
-
-      addOrderToStore(nextOrder);
-      await queryClient?.invalidateQueries({ queryKey: ['orderData'] });
-      await queryClient?.invalidateQueries({ queryKey: ['userData'] });
-      await queryClient?.invalidateQueries({ queryKey: ['usersList'] });
-
-      onOrderCreated?.(nextOrder);
-      setCreatedOrder(nextOrder);
-      setSelectedProductIds([]);
-      reset({
-        userId: defaultUserId ? String(defaultUserId) : '',
-        total: 49.99,
-        stripeInvoiceId: '',
-      });
-    } catch (error) {
-      const message = axios.isAxiosError(error)
-        ? (error.response?.data?.message ?? 'Failed to create order. Please try again.')
-        : 'Failed to create order. Please try again.';
-      setSubmitError(Array.isArray(message) ? message.join(', ') : String(message));
-    }
+    await onSubmitOrder({
+      total: parsedTotal,
+      userId: parsedUserId && !Number.isNaN(parsedUserId) ? parsedUserId : null,
+      stripeInvoiceId: trimmedInvoice || null,
+      productIds: selectedProductIds,
+    });
   };
 
   const userSelectId = `${baseId}-userId`;
@@ -244,28 +150,30 @@ const OrderForm = ({
   const invoiceInputId = `${baseId}-stripeInvoiceId`;
 
   return (
-    <FormCard aria-labelledby={formHeadingId}>
-      <FormTitle id={formHeadingId}>Create New Order</FormTitle>
-      <FormSubtitle>
-        Select products and customer to create an order via <code>POST /v1/orders</code>.
-      </FormSubtitle>
+    <FormCardPanel>
+      {submitError && (
+        <Alert severity="error" role="alert">
+          {submitError}
+        </Alert>
+      )}
 
-      <StyledForm aria-labelledby={formHeadingId} noValidate onSubmit={handleSubmit(onSubmit)}>
-        {users.length > 0 && (
-          <FieldGroup>
-            <FieldLabel htmlFor={userSelectId}>Customer</FieldLabel>
-            <SelectInput id={userSelectId} {...register('userId')}>
-              <option value="">Unassigned (no user)</option>
-              {users
-                .filter((u) => u.id !== undefined)
-                .map((user) => (
-                  <option key={user.id} value={String(user.id)}>
-                    {user.name} ({user.email ?? `ID #${user.id}`})
-                  </option>
-                ))}
-            </SelectInput>
-          </FieldGroup>
-        )}
+      <FormStack noValidate onSubmit={handleSubmit(onSubmit)}>
+        <FieldGroup>
+          <FieldLabel htmlFor={userSelectId}>Customer</FieldLabel>
+          <SelectInput
+            id={userSelectId}
+            name="userId"
+            value={selectedUserId}
+            onChange={(event) => setSelectedUserId(event.target.value)}
+          >
+            <option value="">Unassigned</option>
+            {users.map((user) => (
+              <option key={user.id} value={String(user.id)}>
+                {user.name} ({user.email})
+              </option>
+            ))}
+          </SelectInput>
+        </FieldGroup>
 
         {products.length > 0 && (
           <ProductsFieldset>
@@ -296,19 +204,29 @@ const OrderForm = ({
           <TextInput
             id={totalInputId}
             type="number"
+            inputMode="decimal"
             step="0.01"
             min="0.01"
             required
             aria-invalid={errors.total ? 'true' : 'false'}
-            aria-describedby={errors.total ? `${totalInputId}-error` : undefined}
+            aria-describedby={errors.total ? `${totalInputId}-error` : `${totalInputId}-hint`}
             {...register('total', {
-              valueAsNumber: true,
               required: 'Total amount is required',
-              min: { value: 0.01, message: 'Total must be greater than 0' },
+              validate: (value) => {
+                const numeric = Number(value);
+                if (Number.isNaN(numeric) || numeric <= 0) {
+                  return 'Total must be greater than 0';
+                }
+                return true;
+              },
             })}
           />
-          {errors.total && (
+          {errors.total ? (
             <FieldError id={`${totalInputId}-error`}>{errors.total.message}</FieldError>
+          ) : (
+            <FieldHint id={`${totalInputId}-hint`}>
+              Automatically calculated from selected products, or enter a custom total.
+            </FieldHint>
           )}
         </FieldGroup>
 
@@ -326,24 +244,20 @@ const OrderForm = ({
           />
         </FieldGroup>
 
-        <Button type="submit" variant="contained" disabled={isSubmitting}>
-          {isSubmitting ? 'Creating Order...' : 'Create Order'}
-        </Button>
-
-        {createdOrder && (
-          <Alert severity="success" role="status">
-            Order #{createdOrder.id} created successfully.{' '}
-            <SafeLink to={`/orders/${createdOrder.id}`}>View order details</SafeLink>
-          </Alert>
-        )}
-
-        {submitError && (
-          <Alert severity="error" role="alert">
-            {submitError}
-          </Alert>
-        )}
-      </StyledForm>
-    </FormCard>
+        <FormActionsRow>
+          <Button type="submit" variant="contained" color="primary" disabled={isSubmitting}>
+            {isSubmitting
+              ? mode === 'create'
+                ? 'Creating...'
+                : 'Saving...'
+              : (submitLabel ?? (mode === 'create' ? 'Create Order' : 'Save Changes'))}
+          </Button>
+          <Button component={Link} to={cancelTo} variant="outlined" color="secondary">
+            Cancel
+          </Button>
+        </FormActionsRow>
+      </FormStack>
+    </FormCardPanel>
   );
 };
 

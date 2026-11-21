@@ -1,38 +1,29 @@
-import { useContext } from 'react';
-import { QueryClient, QueryClientContext, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
-import { type ProductItem, normalizeProductsData } from '../pages/UserInfo/UserInfo.State';
-
-const fallbackQueryClient = new QueryClient();
+import type { ApiProduct } from '../types/api';
+import { isServerError } from '../utils/helpers';
 
 export function useProducts(search = '') {
-  const contextClient = useContext(QueryClientContext);
-  const hasProvider = Boolean(contextClient);
+  const normalizedSearch = search.trim();
 
-  const {
-    isLoading: productsAreLoading,
-    error: productsError,
-    data: productsData,
-    refetch: refetchProducts,
-  } = useQuery<ProductItem[]>(
-    {
-      queryKey: ['productsData', search],
-      staleTime: 60_000,
-      enabled: hasProvider,
-      queryFn: () =>
-        axios
-          .get<unknown>('/v1/products', {
-            params: search.trim() ? { search: search.trim() } : undefined,
-          })
-          .then((res) => normalizeProductsData(res.data)),
-    },
-    contextClient ?? fallbackQueryClient,
-  );
+  return useQuery<ApiProduct[]>({
+    queryKey: ['products', normalizedSearch],
+    staleTime: 60_000,
+    queryFn: () =>
+      axios
+        .get<ApiProduct[]>('/v1/products', {
+          params: normalizedSearch ? { search: normalizedSearch } : undefined,
+        })
+        .then((res) => (Array.isArray(res.data) ? res.data : [])),
+    throwOnError: isServerError,
+  });
+}
 
-  return {
-    productsAreLoading,
-    productsError,
-    productsData,
-    refetchProducts,
-  };
+export function useProduct(id?: string) {
+  return useQuery<ApiProduct>({
+    queryKey: ['product', id],
+    enabled: Boolean(id),
+    queryFn: () => axios.get<ApiProduct>(`/v1/products/${id}`).then((res) => res.data),
+    throwOnError: isServerError,
+  });
 }

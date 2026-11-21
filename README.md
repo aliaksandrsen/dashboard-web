@@ -1,6 +1,6 @@
 # Dashboard UI (`TestsTore`)
 
-Full-stack React + TypeScript dashboard frontend connected to the NestJS backend (`dashboard-server`).
+Full-stack React + TypeScript admin dashboard connected to the NestJS backend (`dashboard-server`).
 
 ## How to run locally
 
@@ -21,11 +21,11 @@ The app runs on `http://localhost:5173/`.
 - `pnpm format` / `pnpm format:check` — format or verify formatting with Oxfmt
 - `pnpm build` — type-check with `tsc -b` and build production bundle with Vite
 
-## Implemented Screens & Features
+## Implemented Screens & Routing
 
-- **`/` (`UserInfo`)**: Dashboard with 30-day metrics, sortable/filterable/searchable/paginated `OrdersTable` (with inline `Delete` and `Details` links), `Recent orders` and `Related products` sidebars linked to detail pages.
-- **`/orders/:id` (`OrderDetails`)**: Full order view (`GET /v1/orders/:id`), edit customer/products/total/invoice (`PATCH /v1/orders/:id`), and delete order (`DELETE /v1/orders/:id`).
-- **`/actions` (`Actions`)**: Quick management for recent orders, products, customers, Stripe orders sync (`POST /v1/jobs/sync-stripe`), profile editing, and real order creation (`OrderForm` -> `POST /v1/orders`).
-- **`/products` (`Products`) & `/products/:id` (`ProductDetails`)**: Product catalog (`GET /v1/products`, `GET /v1/products/:id`), creation (`POST /v1/products`), editing (`PATCH /v1/products/:id`), deletion (`DELETE /v1/products/:id`), Stripe Checkout (`POST /v1/stripe/payments`), and Stripe sync (`POST /v1/jobs/sync-stripe`).
-- **`/users` (`Users`) & `/users/:id` (`UserDetails`)**: Users directory (`GET /v1/users?search=...`), active user switching, creation (`POST /v1/users`), detail view with customer orders (`GET /v1/users/:id`), editing (`PATCH /v1/users/:id`), and deletion (`DELETE /v1/users/:id`).
-- **`/settings` (`Settings`)**: Active user profile editing and background Stripe orders sync trigger.
+- **`/` (`Dashboard`)**: Real 30-day order count, total revenue, product & customer counts, recent orders and catalog previews, and Stripe Checkout return banners (`?success=true` / `?canceled=true`).
+- **`/orders`, `/orders/new`, `/orders/:id`, `/orders/:id/edit`**: Full-width orders table with top search/customer/source filter toolbar, dedicated create/view/edit pages, explicit nullable unassign/invoice clearing, and confirmation dialogs for deletion.
+- **`/products`, `/products/new`, `/products/:id`, `/products/:id/edit`**: Full-width catalog with top debounced search toolbar, dedicated create/view/edit pages, and product-level Stripe Checkout (`POST /v1/stripe/payments`) with automatic `stripePriceId` pre-fill.
+- **`/users`, `/users/new`, `/users/:id`, `/users/:id/edit`**: Full-width customers directory with top debounced search toolbar, dedicated create/view/edit pages, customer orders history, and quick order creation (`/orders/new?userId=:id`).
+- **`/settings`**: Stripe Orders background synchronization (`POST /v1/jobs/sync-stripe`) with schedule info and sync metrics.
+- **`*` (`NotFound`)**: Dedicated 404 fallback page with navigation back to Dashboard/Orders (`/actions` redirects to `/orders`).

@@ -1,3 +1,4 @@
+import CssBaseline from '@mui/material/CssBaseline';
 import { ThemeProvider } from '@mui/material/styles';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ErrorBoundary } from 'react-error-boundary';
@@ -18,6 +19,7 @@ const App = () => {
     >
       <QueryClientProvider client={queryClient}>
         <ThemeProvider theme={theme}>
+          <CssBaseline />
           <BrowserRouter>
             <Router />
           </BrowserRouter>

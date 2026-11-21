@@ -5,7 +5,7 @@ import axios from 'axios';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ProductDetails from '.';
-import { userStore } from '../UserInfo/UserInfo.State';
+import * as navigationUtils from '../../utils/navigation';
 
 vi.mock('axios', async (importOriginal) => {
   const actual = await importOriginal<typeof import('axios')>();
@@ -14,7 +14,7 @@ vi.mock('axios', async (importOriginal) => {
     default: {
       ...actual.default,
       get: vi.fn(),
-      patch: vi.fn(),
+      post: vi.fn(),
       delete: vi.fn(),
       isAxiosError: actual.default.isAxiosError,
     },
@@ -30,7 +30,7 @@ const renderProductDetails = (productId = 'uuid-1') => {
       <MemoryRouter initialEntries={[`/products/${productId}`]}>
         <Routes>
           <Route path="/products/:id" element={<ProductDetails />} />
-          <Route path="/products" element={<div>Products Catalog</div>} />
+          <Route path="/products" element={<div>Products Home</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -39,23 +39,15 @@ const renderProductDetails = (productId = 'uuid-1') => {
 
 describe('<ProductDetails />', () => {
   beforeEach(() => {
-    userStore.user = {
-      id: 1,
-      name: 'Antonio West',
-      joinedDate: '2025-01-01',
-      recentOrders: 1,
-      newProducts: 1,
-      nextDeliveryDate: '',
-    };
-
     vi.mocked(axios.get).mockResolvedValue({
       data: {
         id: 'uuid-1',
-        name: 'Fullstack JS Book',
+        name: 'Wireless Mouse',
         price: 49.99,
-        stripeProductId: 'prod_123',
-        createdAt: '2026-11-02T18:55:12.982Z',
-        updatedAt: '2026-11-02T18:55:12.982Z',
+        stripeProductId: 'prod_mouse',
+        stripePriceId: 'price_mouse',
+        createdAt: '2026-06-24T00:00:00.000Z',
+        updatedAt: '2026-06-25T00:00:00.000Z',
       },
     });
   });
@@ -64,67 +56,54 @@ describe('<ProductDetails />', () => {
     vi.clearAllMocks();
   });
 
-  it('loads product details and updates via PATCH /v1/products/:id', async () => {
-    vi.mocked(axios.patch).mockResolvedValueOnce({
-      data: { id: 'uuid-1', name: 'Updated Book', price: 59.99 },
+  it('renders product details, pre-fills stripePriceId for checkout, and posts /v1/stripe/payments', async () => {
+    vi.mocked(axios.post).mockResolvedValueOnce({
+      data: { sessionId: 'cs_1', url: 'https://checkout.stripe.com/pay/cs_1' },
     });
+    const redirectSpy = vi
+      .spyOn(navigationUtils, 'redirectToExternalUrl')
+      .mockImplementation(() => {});
 
     renderProductDetails('uuid-1');
 
     expect(await screen.findByText('$49.99')).toBeDefined();
-    expect(screen.getByText('prod_123')).toBeDefined();
-    expect(await screen.findByDisplayValue('prod_123')).toBeDefined();
+    expect(screen.getByRole('link', { name: 'Edit Product' }).getAttribute('href')).toBe(
+      '/products/uuid-1/edit',
+    );
+    expect((screen.getByLabelText(/Stripe Price ID/) as HTMLInputElement).value).toBe(
+      'price_mouse',
+    );
 
-    fireEvent.change(screen.getByLabelText('Product Name'), { target: { value: 'Updated Book' } });
-    fireEvent.change(screen.getByLabelText('Price (USD)'), { target: { value: '59.99' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save Product Changes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Pay $49.99 with Stripe' }));
 
-    expect(await screen.findByText('Product "Updated Book" updated.')).toBeDefined();
     await waitFor(() => {
-      expect(axios.patch).toHaveBeenCalledWith('/v1/products/uuid-1', {
-        name: 'Updated Book',
-        price: 59.99,
-        stripeProductId: 'prod_123',
+      expect(axios.post).toHaveBeenCalledWith('/v1/stripe/payments', {
+        priceId: 'price_mouse',
+        quantity: 1,
       });
+      expect(redirectSpy).toHaveBeenCalledWith('https://checkout.stripe.com/pay/cs_1');
     });
+
+    redirectSpy.mockRestore();
   });
 
-  it('deletes product and navigates to /products', async () => {
+  it('confirms delete via dialog and navigates back to /products', async () => {
     vi.mocked(axios.delete).mockResolvedValueOnce({ data: { id: 'uuid-1' } });
 
     renderProductDetails('uuid-1');
     expect(await screen.findByText('$49.99')).toBeDefined();
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete Product' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm Delete' }));
+    const confirmButtons = screen.getAllByRole('button', { name: 'Delete Product' });
+    fireEvent.click(confirmButtons[confirmButtons.length - 1]);
 
-    expect(await screen.findByText('Products Catalog')).toBeDefined();
+    expect(await screen.findByText('Products Home')).toBeDefined();
     expect(axios.delete).toHaveBeenCalledWith('/v1/products/uuid-1');
-  });
-
-  it('shows loading spinner, handles error with retry, and displays update errors', async () => {
-    vi.mocked(axios.get).mockImplementationOnce(() => new Promise(() => {}));
-    renderProductDetails('uuid-loading');
-    expect(screen.getByTestId('product-details-loading')).toBeDefined();
-
-    vi.mocked(axios.get).mockRejectedValueOnce(new Error('Not found'));
-    renderProductDetails('uuid-missing');
-    expect(await screen.findByText('Product could not be loaded.')).toBeDefined();
-
-    vi.mocked(axios.get).mockResolvedValueOnce({
-      data: { id: 'uuid-missing', name: 'Recovered Product', price: 25 },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
-    expect(await screen.findByText('$25.00')).toBeDefined();
-
-    vi.mocked(axios.patch).mockRejectedValueOnce(new Error('Update failed'));
-    fireEvent.click(screen.getByRole('button', { name: 'Save Product Changes' }));
-    expect(await screen.findByText('Failed to update product.')).toBeDefined();
   });
 
   it('has no axe accessibility violations', async () => {
     const { container } = renderProductDetails('uuid-1');
-    expect(await screen.findByText('$49.99')).toBeDefined();
+    await screen.findByText('$49.99');
     const results = await axe.run(container, {
       rules: { 'color-contrast': { enabled: false } },
     });

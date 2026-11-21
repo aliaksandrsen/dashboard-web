@@ -43,10 +43,7 @@ importers:
         version: 7.18.6(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       styled-components:
         specifier: 6.6.0
-        version: 6.6.0(css-to-react-native@3.2.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      valtio:
-        specifier: 2.3.2
-        version: 2.3.2(@types/react@19.3.0)(react@19.3.1)
+        version: 6.6.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
     devDependencies:
       '@playwright/test':
         specifier: 1.65.1
@@ -67,8 +64,8 @@ importers:
         specifier: 6.3.0
         version: 6.3.0(vite@8.3.8(@types/node@26.6.6))
       '@vitest/coverage-v8':
-        specifier: 5.1.0
-        version: 5.1.0(vitest@5.1.1)
+        specifier: 5.1.1
+        version: 5.1.1(vitest@5.1.1)
       axe-core:
         specifier: 4.14.1
         version: 4.14.1
@@ -92,7 +89,7 @@ importers:
         version: 8.3.8(@types/node@26.6.6)
       vitest:
         specifier: 5.1.1
-        version: 5.1.1(@types/node@26.6.6)(@vitest/coverage-v8@5.1.0)(jsdom@31.0.1)(vite@8.3.8(@types/node@26.6.6))
+        version: 5.1.1(@types/node@26.6.6)(@vitest/coverage-v8@5.1.1)(jsdom@31.0.1)(vite@8.3.8(@types/node@26.6.6))
 
 packages:
 
@@ -873,11 +870,11 @@ packages:
       oxc-transform-react:
         optional: true
 
-  '@vitest/coverage-v8@5.1.0':
-    resolution: {integrity: sha512-OY9aShBQG5KOIw2zCo9fDoCHI9RHliNHJ//nM7m6jGg41Hyke9JOGWmeMlK74xYErsxMoK8mIB3gAeEyFVA7LA==}
+  '@vitest/coverage-v8@5.1.1':
+    resolution: {integrity: sha512-xL4NkbVx/UqqDHaXSOyvB8qsSoLQ+dVNGR9H2Bh/4ggQtmaPFNPUC9gZQwKZePLOQ6WDcgwXVnPulFW9eCHt0w==}
     peerDependencies:
-      '@vitest/browser': 5.1.0
-      vitest: 5.1.0
+      '@vitest/browser': 5.1.1
+      vitest: 5.1.1
     peerDependenciesMeta:
       '@vitest/browser':
         optional: true
@@ -1388,9 +1385,6 @@ packages:
   prop-types@15.8.1:
     resolution: {integrity: sha512-oj87CgZICdulUohogVAR7AjlC0327U4el4L6eAvOqCeudMDVU0NThNaV+b9Df4dXgSP1gXMTnPdhfe/2qDH5cg==}
 
-  proxy-compare@3.0.1:
-    resolution: {integrity: sha512-V9plBAt3qjMlS1+nC8771KNf6oJ12gExvaxnNzN/9yVRLdTv/lc+oJlnSzrdYDAvBfTStPCoiaCOTmTs0adv7Q==}
-
   proxy-from-env@2.1.0:
     resolution: {integrity: sha512-cJ+oHTW1VAEa8cJslgmUZrc+sjRKgAKl3Zyse6+PV38hZe/V6Z14TbCuXcan9F9ghlz4QrFr2c92TNF82UkYHA==}
     engines: {node: '>=10'}
@@ -1566,18 +1560,6 @@ packages:
   undici@8.12.4:
     resolution: {integrity: sha512-8Mx+uNKKER2bA4AdtedkqRbwUCIJFr2nJckXRe5yrDqzePqwLP7VNcctN8/XdmDSbF7mS+jJKIszlL+vbam1VA==}
     engines: {node: '>=22.19.0'}
-
-  valtio@2.3.2:
-    resolution: {integrity: sha512-YXhWQei9IN/ZDce9rhL3trCq9+vVq8M1gWmKVdP3YSZ2gxsmmNWVbxXwf9yG6ffu/dAvAD91nevg8xirGr4Dhg==}
-    engines: {node: '>=12.20.0'}
-    peerDependencies:
-      '@types/react': '>=18.0.0'
-      react: '>=18.0.0'
-    peerDependenciesMeta:
-      '@types/react':
-        optional: true
-      react:
-        optional: true
 
   vite@8.3.8:
     resolution: {integrity: sha512-LzOn3h9rG/0vhLdXrV4yJ4QFA9eEoqCl+Yx+kGJd7aB9w6nfNgVHKSYwLPZUHrz4ZGa+t+kXjV9itvcHDLQouA==}
@@ -2240,7 +2222,7 @@ snapshots:
       '@rolldown/pluginutils': 1.1.0
       vite: 8.3.8(@types/node@26.6.6)
 
-  '@vitest/coverage-v8@5.1.0(vitest@5.1.1)':
+  '@vitest/coverage-v8@5.1.1(vitest@5.1.1)':
     dependencies:
       '@bcoe/v8-coverage': 1.0.2
       '@vitest/istanbul-lib-coverage': 2.1.0
@@ -2250,7 +2232,7 @@ snapshots:
       obug: 3.0.0
       std-env: 4.3.0
       tinyrainbow: 3.2.0
-      vitest: 5.1.1(@types/node@26.6.6)(@vitest/coverage-v8@5.1.0)(jsdom@31.0.1)(vite@8.3.8(@types/node@26.6.6))
+      vitest: 5.1.1(@types/node@26.6.6)(@vitest/coverage-v8@5.1.1)(jsdom@31.0.1)(vite@8.3.8(@types/node@26.6.6))
 
   '@vitest/istanbul-lib-coverage@2.1.0': {}
 
@@ -2326,8 +2308,7 @@ snapshots:
 
   callsites@3.1.0: {}
 
-  camelize@1.0.1:
-    optional: true
+  camelize@1.0.1: {}
 
   chai@6.3.0: {}
 
@@ -2349,15 +2330,13 @@ snapshots:
       path-type: 4.0.0
       yaml: 1.10.3
 
-  css-color-keywords@1.0.0:
-    optional: true
+  css-color-keywords@1.0.0: {}
 
   css-to-react-native@3.2.0:
     dependencies:
       camelize: 1.0.1
       css-color-keywords: 1.0.0
       postcss-value-parser: 4.2.0
-    optional: true
 
   csstype@3.2.3: {}
 
@@ -2713,8 +2692,7 @@ snapshots:
     dependencies:
       playwright-core: 1.65.1
 
-  postcss-value-parser@4.2.0:
-    optional: true
+  postcss-value-parser@4.2.0: {}
 
   postcss@8.5.32:
     dependencies:
@@ -2733,8 +2711,6 @@ snapshots:
       loose-envify: 1.4.0
       object-assign: 4.1.1
       react-is: 16.13.1
-
-  proxy-compare@3.0.1: {}
 
   proxy-from-env@2.1.0: {}
 
@@ -2832,15 +2808,15 @@ snapshots:
 
   std-env@4.3.0: {}
 
-  styled-components@6.6.0(css-to-react-native@3.2.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
+  styled-components@6.6.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
     dependencies:
       '@emotion/is-prop-valid': 1.4.0
       '@types/stylis': 4.2.7
+      css-to-react-native: 3.2.0
       csstype: 3.2.3
       react: 19.3.1
       stylis: 4.3.6
     optionalDependencies:
-      css-to-react-native: 3.2.0
       react-dom: 19.3.1(react@19.3.1)
 
   stylis@4.2.0: {}
@@ -2903,13 +2879,6 @@ snapshots:
 
   undici@8.12.4: {}
 
-  valtio@2.3.2(@types/react@19.3.0)(react@19.3.1):
-    dependencies:
-      proxy-compare: 3.0.1
-    optionalDependencies:
-      '@types/react': 19.3.0
-      react: 19.3.1
-
   vite@8.3.8(@types/node@26.6.6):
     dependencies:
       lightningcss: 1.33.0
@@ -2921,7 +2890,7 @@ snapshots:
       '@types/node': 26.6.6
       fsevents: 2.3.3
 
-  vitest@5.1.1(@types/node@26.6.6)(@vitest/coverage-v8@5.1.0)(jsdom@31.0.1)(vite@8.3.8(@types/node@26.6.6)):
+  vitest@5.1.1(@types/node@26.6.6)(@vitest/coverage-v8@5.1.1)(jsdom@31.0.1)(vite@8.3.8(@types/node@26.6.6)):
     dependencies:
       '@types/chai': 5.2.3
       '@vitest/mocker': 5.1.1(vite@8.3.8(@types/node@26.6.6))
@@ -2939,7 +2908,7 @@ snapshots:
       why-is-node-running: 3.2.1
     optionalDependencies:
       '@types/node': 26.6.6
-      '@vitest/coverage-v8': 5.1.0(vitest@5.1.1)
+      '@vitest/coverage-v8': 5.1.1(vitest@5.1.1)
       jsdom: 31.0.1
     transitivePeerDependencies:
       - msw

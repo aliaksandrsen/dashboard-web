@@ -5,7 +5,6 @@ import axios from 'axios';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Users from '.';
-import { userStore } from '../UserInfo/UserInfo.State';
 
 vi.mock('axios', async (importOriginal) => {
   const actual = await importOriginal<typeof import('axios')>();
@@ -14,20 +13,19 @@ vi.mock('axios', async (importOriginal) => {
     default: {
       ...actual.default,
       get: vi.fn(),
-      post: vi.fn(),
       delete: vi.fn(),
       isAxiosError: actual.default.isAxiosError,
     },
   };
 });
 
-const renderUsers = () => {
+const renderUsers = (state?: unknown) => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[{ pathname: '/users', state }]}>
         <Users />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -36,18 +34,6 @@ const renderUsers = () => {
 
 describe('<Users />', () => {
   beforeEach(() => {
-    userStore.user = {
-      id: 1,
-      name: 'Antonio West',
-      email: 'antonio@example.com',
-      address: '123 Main St',
-      joinedDate: '2025-01-01',
-      recentOrders: 2,
-      newProducts: 0,
-      nextDeliveryDate: '',
-    };
-    userStore.activeUserId = 1;
-
     vi.mocked(axios.get).mockResolvedValue({
       data: [
         {
@@ -65,73 +51,43 @@ describe('<Users />', () => {
     vi.clearAllMocks();
   });
 
-  it('loads users list, creates a user, and deletes a user', async () => {
-    vi.mocked(axios.post).mockResolvedValueOnce({
-      data: { id: 2, name: 'Jane Doe', email: 'jane@example.com', address: '456 Oak Ave' },
+  it('renders clean full-width users table, top search bar, Create User button, and flash banner', async () => {
+    renderUsers({ flash: { type: 'success', text: 'User "Jane Doe" created successfully.' } });
+
+    expect(await screen.findByText('antonio@example.com')).toBeDefined();
+    expect(screen.getByText('User "Jane Doe" created successfully.')).toBeDefined();
+    expect(screen.getByRole('link', { name: 'Create User' }).getAttribute('href')).toBe(
+      '/users/new',
+    );
+    expect(screen.getByRole('link', { name: 'Edit Antonio West' }).getAttribute('href')).toBe(
+      '/users/1/edit',
+    );
+    expect(screen.queryByRole('button', { name: 'Set Active' })).toBeNull();
+
+    fireEvent.change(screen.getByLabelText('Search users'), { target: { value: 'Antonio' } });
+    await waitFor(() => {
+      expect(axios.get).toHaveBeenCalledWith('/v1/users', { params: { search: 'Antonio' } });
     });
+  });
+
+  it('confirms deletion via dialog before calling DELETE /v1/users/:id', async () => {
     vi.mocked(axios.delete).mockResolvedValueOnce({ data: { id: 1 } });
 
     renderUsers();
-    expect(await screen.findByText(/antonio@example\.com/)).toBeDefined();
-
-    fireEvent.change(screen.getByLabelText('Full Name'), { target: { value: 'Jane Doe' } });
-    fireEvent.change(screen.getByLabelText('Email Address'), {
-      target: { value: 'jane@example.com' },
-    });
-    fireEvent.change(screen.getByLabelText('Shipping Address'), {
-      target: { value: '456 Oak Ave' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Create User' }));
-
-    expect(await screen.findByText(/User "Jane Doe" created/)).toBeDefined();
-    expect(axios.post).toHaveBeenCalledWith('/v1/users', {
-      name: 'Jane Doe',
-      email: 'jane@example.com',
-      address: '456 Oak Ave',
-    });
+    expect(await screen.findByText('Antonio West')).toBeDefined();
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete Antonio West' }));
+    expect(screen.getByText('Delete "Antonio West"?')).toBeDefined();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete User' }));
     await waitFor(() => {
       expect(axios.delete).toHaveBeenCalledWith('/v1/users/1');
     });
   });
 
-  it('switches active user and filters users via search input', async () => {
-    vi.mocked(axios.get).mockResolvedValue({
-      data: [
-        {
-          id: 1,
-          name: 'Antonio West',
-          email: 'antonio@example.com',
-          address: '123 Main St',
-          orders: [],
-        },
-        {
-          id: 2,
-          name: 'Second User',
-          email: 'second@example.com',
-          address: '456 Side St',
-          orders: [],
-        },
-      ],
-    });
-
-    renderUsers();
-    expect(await screen.findByText(/second@example\.com/)).toBeDefined();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Set Active' }));
-    expect(await screen.findByText('Active user switched to "Second User".')).toBeDefined();
-    expect(userStore.activeUserId).toBe(2);
-
-    fireEvent.change(screen.getByLabelText('Filter users'), { target: { value: 'Second' } });
-    await waitFor(() => {
-      expect(axios.get).toHaveBeenCalledWith('/v1/users', { params: { search: 'Second' } });
-    });
-  });
-
   it('has no axe accessibility violations', async () => {
     const { container } = renderUsers();
-    expect(await screen.findByText(/antonio@example\.com/)).toBeDefined();
+    await screen.findByText('Antonio West');
     const results = await axe.run(container, {
       rules: { 'color-contrast': { enabled: false } },
     });

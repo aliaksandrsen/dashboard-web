@@ -1,139 +1,103 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import axe from 'axe-core';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
+import type { ApiOrder } from '../../types/api';
 import OrdersTable from '.';
-import { type Order, OrderStatus } from '../../pages/UserInfo/UserInfo.State';
 
-const sampleOrders: Order[] = [
-  {
-    id: '1',
-    productName: 'Fancy soap',
-    status: OrderStatus.Shipped,
-    orderedDate: '06/24/2025',
-    deliveryDate: '06/27/2025',
-    totalAmount: 400,
-    hasBeenReviewed: true,
-  },
-  {
-    id: '2',
-    productName: 'Fancy oils',
-    status: OrderStatus.Pending,
-    orderedDate: '06/27/2025',
-    deliveryDate: '06/30/2025',
-    totalAmount: 200,
-    hasBeenReviewed: false,
-  },
-  {
-    id: '3',
-    productName: 'Dog stuff',
-    status: OrderStatus.Shipped,
-    orderedDate: '06/18/2025',
-    deliveryDate: '06/21/2025',
-    totalAmount: 40,
-    hasBeenReviewed: false,
-  },
-  {
-    id: '4',
-    productName: 'Grape soda',
-    status: OrderStatus.OutOfStock,
-    orderedDate: '06/24/2025',
-    deliveryDate: '06/27/2025',
-    totalAmount: 0,
-    hasBeenReviewed: false,
-  },
-  {
-    id: '5',
-    productName: 'Sound equipment',
-    status: OrderStatus.Shipped,
-    orderedDate: '07/02/2025',
-    deliveryDate: '07/05/2025',
-    totalAmount: 30,
-    hasBeenReviewed: true,
-  },
-  {
-    id: '6',
-    productName: 'Sno-cone machine',
-    status: OrderStatus.Pending,
-    orderedDate: '07/15/2025',
-    deliveryDate: '07/18/2025',
-    totalAmount: 400,
-    hasBeenReviewed: false,
-  },
-  {
-    id: '7',
-    productName: 'Archer target',
-    status: OrderStatus.Shipped,
-    orderedDate: '07/20/2025',
-    deliveryDate: '07/23/2025',
-    totalAmount: 699,
-    hasBeenReviewed: true,
-  },
-];
+const makeOrder = (id: number, overrides: Partial<ApiOrder> = {}): ApiOrder => ({
+  id,
+  total: id * 50,
+  stripeInvoiceId: id % 2 === 0 ? `in_${id}` : null,
+  createdAt: `2026-06-${String(id).padStart(2, '0')}T12:00:00.000Z`,
+  updatedAt: `2026-06-${String(id).padStart(2, '0')}T12:00:00.000Z`,
+  userId: id === 3 ? null : 1,
+  user:
+    id === 3
+      ? null
+      : { id: 1, name: `Customer ${id}`, email: `c${id}@example.com`, address: '123 St' },
+  products: [
+    {
+      id: `p-${id}`,
+      name: `Product ${id}`,
+      price: id * 50,
+      stripeProductId: null,
+      stripePriceId: null,
+      createdAt: '2026-06-01T00:00:00.000Z',
+      updatedAt: '2026-06-01T00:00:00.000Z',
+    },
+  ],
+  ...overrides,
+});
+
+const sampleOrders: ApiOrder[] = [1, 2, 3, 4, 5, 6, 7].map((id) => makeOrder(id));
 
 describe('<OrdersTable />', () => {
-  it('renders orders table with status badges, formatted dates, amounts, and pagination', () => {
-    render(<OrdersTable orders={sampleOrders} />);
-
-    expect(screen.getByRole('table', { name: 'orders-table' })).toBeDefined();
-    expect(screen.getByText('Fancy soap')).toBeDefined();
-    expect(screen.getByText('No date available')).toBeDefined();
-    expect(screen.getAllByText('$400.00').length).toBeGreaterThan(0);
-
-    // 7 items with pageSize=6 should paginate Archer target onto page 2
-    expect(screen.queryByText('Archer target')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Page 2' }));
-    expect(screen.getByText('Archer target')).toBeDefined();
-  });
-
-  it('filters orders by search query and status dropdown', () => {
-    render(<OrdersTable orders={sampleOrders} />);
-
-    fireEvent.change(screen.getByLabelText('Search orders'), {
-      target: { value: 'Grape' },
-    });
-    expect(screen.getByText('Grape soda')).toBeDefined();
-    expect(screen.queryByText('Fancy soap')).toBeNull();
-
-    fireEvent.change(screen.getByLabelText('Search orders'), {
-      target: { value: '' },
-    });
-    fireEvent.change(screen.getByLabelText('Filter orders by status'), {
-      target: { value: OrderStatus.Pending },
-    });
-    expect(screen.getByText('Fancy oils')).toBeDefined();
-    expect(screen.queryByText('Fancy soap')).toBeNull();
-  });
-
-  it('sorts columns via button inside th and updates aria-sort and status region', () => {
-    render(<OrdersTable orders={sampleOrders} />);
-
-    const totalHeaderBtn = screen.getByRole('button', { name: 'Total Amount' });
-    const totalHeaderCell = totalHeaderBtn.closest('th');
-    expect(totalHeaderCell?.getAttribute('aria-sort')).toBeNull();
-
-    fireEvent.click(totalHeaderBtn);
-    expect(totalHeaderCell?.getAttribute('aria-sort')).toBe('ascending');
-    expect(screen.getByRole('status').textContent).toContain(
-      'Sorted by Total Amount, ascending, 7 rows',
+  it('renders honest backend columns, links, and pagination', () => {
+    render(
+      <MemoryRouter>
+        <OrdersTable orders={sampleOrders} pageSize={6} />
+      </MemoryRouter>,
     );
 
-    fireEvent.click(totalHeaderBtn);
-    expect(totalHeaderCell?.getAttribute('aria-sort')).toBe('descending');
+    expect(screen.getByRole('table', { name: 'orders-table' })).toBeDefined();
+    expect(screen.getByText('#1')).toBeDefined();
+    expect(screen.getByText('Customer 1')).toBeDefined();
+    expect(screen.getByText('Unassigned')).toBeDefined();
+    expect(screen.getByText('$50.00')).toBeDefined();
+    expect(screen.getAllByText('Stripe').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Manual').length).toBeGreaterThan(0);
+
+    // 7 items with pageSize=6 puts order #7 on page 2
+    expect(screen.queryByText('#7')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Page 2' }));
+    expect(screen.getByText('#7')).toBeDefined();
   });
 
-  it('renders action links and triggers delete callback', () => {
+  it('sorts columns via header buttons and updates aria-sort and live region', () => {
+    render(
+      <MemoryRouter>
+        <OrdersTable orders={sampleOrders} />
+      </MemoryRouter>,
+    );
+
+    const totalBtn = screen.getByRole('button', { name: 'Total' });
+    const totalTh = totalBtn.closest('th');
+    expect(totalTh?.getAttribute('aria-sort')).toBeNull();
+
+    fireEvent.click(totalBtn);
+    expect(totalTh?.getAttribute('aria-sort')).toBe('ascending');
+    expect(screen.getByRole('status').textContent).toContain('Sorted by Total, ascending, 7 rows');
+
+    fireEvent.click(totalBtn);
+    expect(totalTh?.getAttribute('aria-sort')).toBe('descending');
+  });
+
+  it('links to view/edit routes and invokes onDeleteOrder callback', () => {
     const onDeleteOrder = vi.fn();
-    render(<OrdersTable orders={sampleOrders} onDeleteOrder={onDeleteOrder} />);
+    render(
+      <MemoryRouter>
+        <OrdersTable orders={sampleOrders} onDeleteOrder={onDeleteOrder} />
+      </MemoryRouter>,
+    );
 
-    const detailsLink = screen.getByRole('link', { name: 'View details for Fancy soap' });
-    expect(detailsLink.getAttribute('href')).toBe('/orders/1');
+    expect(screen.getByRole('link', { name: 'View order #1' }).getAttribute('href')).toBe(
+      '/orders/1',
+    );
+    expect(screen.getByRole('link', { name: 'Edit order #1' }).getAttribute('href')).toBe(
+      '/orders/1/edit',
+    );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Delete order 1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete order #1' }));
     expect(onDeleteOrder).toHaveBeenCalledWith(sampleOrders[0]);
   });
 
   it('has no axe accessibility violations', async () => {
-    const { container } = render(<OrdersTable orders={sampleOrders} />);
+    const { container } = render(
+      <MemoryRouter>
+        <OrdersTable orders={sampleOrders} />
+      </MemoryRouter>,
+    );
     const results = await axe.run(container, {
       rules: { 'color-contrast': { enabled: false } },
     });

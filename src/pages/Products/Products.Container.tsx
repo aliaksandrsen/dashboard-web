@@ -1,712 +1,312 @@
-import { useContext, useEffect, useId, useMemo, useState } from 'react';
+import { useId, useState } from 'react';
+import SearchIcon from '@mui/icons-material/Search';
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
-import Container from '@mui/material/Container';
-import Dialog from '@mui/material/Dialog';
-import DialogActions from '@mui/material/DialogActions';
-import DialogContent from '@mui/material/DialogContent';
-import DialogTitle from '@mui/material/DialogTitle';
-import { QueryClientContext } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { useForm } from 'react-hook-form';
+import { Link } from 'react-router-dom';
 import styled from 'styled-components';
-import { useSnapshot } from 'valtio';
-import Header from '../../components/Header';
-import SafeLink from '../../components/SafeLink';
-import { useProducts } from '../../hooks/useProducts';
-import { formatCurrency, formatShortDate } from '../../utils/helpers';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import {
-  type ProductItem,
-  changeProductSearch,
-  productStore,
-  updateProducts,
-  updateUser,
-  userStore,
-} from '../UserInfo/UserInfo.State';
-import useUserInfo from '../UserInfo/useUserInfo';
+  BadgePill,
+  CardPanel,
+  EmptyStateText,
+  FilterToolbar,
+  PageHeaderActions,
+  PageHeaderRow,
+  PageHeaderText,
+  PageSubtitle,
+  PageTitle,
+  PageWrapper,
+  SearchInputBox,
+  ToolbarSearchInput,
+  VisuallyHidden,
+} from '../../components/ui/PagePrimitives';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { useFlashMessage } from '../../hooks/useFlashMessage';
+import { useProducts } from '../../hooks/useProducts';
+import type { ApiProduct } from '../../types/api';
+import { extractApiError, formatCurrency, formatShortDate } from '../../utils/helpers';
 
-interface CreateProductValues {
-  name: string;
-  price: number;
-  description: string;
-  stripeProductId: string;
-}
+const TableWrapper = styled.div`
+  overflow-x: auto;
+  max-inline-size: 100%;
 
-interface EditProductValues {
-  name: string;
-  price: number;
-  stripeProductId: string;
-}
-
-interface CheckoutFormValues {
-  priceId: string;
-  quantity: number;
-}
-
-const PageBody = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  padding-bottom: 40px;
-`;
-
-const TopBar = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-`;
-
-const PageTitle = styled.h1`
-  margin: 0;
-  font-size: 1.375rem;
-  font-weight: 600;
-  color: #111827;
-`;
-
-const TwoColumnGrid = styled.div`
-  display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
-  gap: 24px;
-  align-items: start;
-
-  @media (max-width: 960px) {
-    grid-template-columns: minmax(0, 1fr);
+  &:focus-visible {
+    outline: 2px solid #0b57d0;
+    outline-offset: 2px;
   }
 `;
 
-const Panel = styled.section`
-  background-color: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+const StyledTable = styled.table`
+  width: 100%;
+  min-inline-size: 640px;
+  border-collapse: separate;
+  border-spacing: 0;
+  text-align: left;
+  font-size: 0.875rem;
 `;
 
-const PanelTitle = styled.h2`
-  margin: 0;
-  font-size: 1.0625rem;
-  font-weight: 600;
-  color: #111827;
-`;
-
-const ProductList = styled.ul`
-  list-style: none;
-  margin: 0;
+const TableCaption = styled.caption`
+  position: absolute;
+  clip-path: inset(50%);
+  overflow: hidden;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  border: 0;
+  white-space: nowrap;
 `;
 
-const ProductCard = styled.li`
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  padding: 16px;
-  background-color: #f9fafb;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-`;
-
-const ProductMeta = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-`;
-
-const ProductNameLink = styled(SafeLink)`
+const Th = styled.th`
+  padding: 12px;
+  border-bottom: 1px solid #e2e8f0;
+  background-color: #f8fafc;
+  color: #334155;
   font-weight: 600;
-  font-size: 1rem;
-  color: #111827;
+  white-space: nowrap;
+`;
+
+const RowTh = styled.th`
+  padding: 14px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  font-weight: 600;
+  color: #0f172a;
+`;
+
+const Td = styled.td`
+  padding: 14px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155;
+  vertical-align: middle;
+`;
+
+const ProductLink = styled(Link)`
+  color: #1d4ed8;
+  font-weight: 600;
   text-decoration: none;
 
   &:hover,
   &:focus-visible {
     text-decoration: underline;
-    color: #0b57d0;
   }
 `;
 
-const ProductSubtext = styled.span`
-  font-size: 0.8125rem;
-  color: #6b7280;
-`;
-
-const CardActions = styled.div`
-  display: flex;
-  flex-wrap: wrap;
+const RowActions = styled.div`
+  display: inline-flex;
+  align-items: center;
   gap: 8px;
-`;
-
-const FormStack = styled.form`
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-`;
-
-const FieldGroup = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-`;
-
-const FieldLabel = styled.label`
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #111827;
-`;
-
-const StyledInput = styled.input`
-  font: inherit;
-  font-size: max(1rem, 0.875rem);
-  min-height: 42px;
-  padding: 8px 12px;
-  border: 1px solid #767676;
-  border-radius: 6px;
-  background-color: #ffffff;
-  color: #111827;
-
-  &:focus-visible {
-    outline: 2px solid #0b57d0;
-    outline-offset: 1px;
-  }
-`;
-
-const ErrorText = styled.span`
-  color: #d32f2f;
-  font-size: 0.75rem;
+  white-space: nowrap;
 `;
 
 const Products = () => {
-  const userSnap = useSnapshot(userStore);
-  const productSnap = useSnapshot(productStore);
-  const queryClient = useContext(QueryClientContext);
+  useDocumentTitle('Products');
+
+  const queryClient = useQueryClient();
+  const { flash, setFlash, clearFlash } = useFlashMessage();
   const idPrefix = useId();
-  const [statusBanner, setStatusBanner] = useState<{
-    type: 'success' | 'error' | 'info';
-    text: string;
-  } | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<ProductItem | null>(null);
-  const [selectedCheckoutName, setSelectedCheckoutName] = useState<string>('');
 
-  const { userData } = useUserInfo();
-  const { productsAreLoading, productsError, productsData, refetchProducts } = useProducts(
-    productSnap.search,
-  );
+  const [searchInput, setSearchInput] = useState('');
+  const debouncedSearch = useDebouncedValue(searchInput, 250);
+  const [productToDelete, setProductToDelete] = useState<ApiProduct | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  useEffect(() => {
-    if (userData && !userStore.user.name) {
-      updateUser(userData);
-    }
-  }, [userData]);
+  const productsQuery = useProducts(debouncedSearch);
+  const products = productsQuery.data ?? [];
 
-  useEffect(() => {
-    if (productsData) {
-      updateProducts(productsData);
-    }
-  }, [productsData]);
-
-  // Client-side filter complements server search in case NestJS CacheKey('products') serves cached list
-  const visibleProducts = useMemo(() => {
-    const q = productSnap.search.trim().toLowerCase();
-    if (!q) {
-      return productSnap.products;
-    }
-    return productSnap.products.filter((product) => product.name.toLowerCase().includes(q));
-  }, [productSnap.products, productSnap.search]);
-
-  const {
-    register: registerCreate,
-    handleSubmit: handleCreateSubmit,
-    reset: resetCreateForm,
-    formState: { errors: createErrors, isSubmitting: isCreating },
-  } = useForm<CreateProductValues>({
-    mode: 'onBlur',
-    defaultValues: { name: '', price: 49.99, description: '', stripeProductId: '' },
-  });
-
-  const {
-    register: registerEdit,
-    handleSubmit: handleEditSubmit,
-    reset: resetEditForm,
-    formState: { errors: editErrors, isSubmitting: isUpdating },
-  } = useForm<EditProductValues>({
-    mode: 'onBlur',
-    defaultValues: { name: '', price: 0, stripeProductId: '' },
-  });
-
-  const {
-    register: registerCheckout,
-    handleSubmit: handleCheckoutSubmit,
-    setFocus: setCheckoutFocus,
-    formState: { errors: checkoutErrors, isSubmitting: isCheckingOut },
-  } = useForm<CheckoutFormValues>({
-    mode: 'onBlur',
-    defaultValues: { priceId: '', quantity: 1 },
-  });
-
-  const onCreateProduct = async (values: CreateProductValues) => {
-    setStatusBanner(null);
-    const trimmedStripeId = values.stripeProductId.trim();
+  const handleConfirmDelete = async () => {
+    if (!productToDelete) return;
+    setIsDeleting(true);
     try {
-      await axios.post('/v1/products', {
-        name: values.name.trim(),
-        price: Number(values.price),
-        ...(values.description.trim() ? { description: values.description.trim() } : {}),
-        ...(trimmedStripeId ? { stripeProductId: trimmedStripeId } : {}),
-      });
-      await queryClient?.invalidateQueries({ queryKey: ['productsData'] });
-      await refetchProducts();
-      resetCreateForm();
-      setStatusBanner({
-        type: 'success',
-        text: `Product "${values.name}" created successfully.`,
-      });
+      await axios.delete(`/v1/products/${productToDelete.id}`);
+      await queryClient.invalidateQueries({ queryKey: ['products'] });
+      await queryClient.invalidateQueries({ queryKey: ['orders'] });
+      setFlash({ type: 'success', text: `Deleted product "${productToDelete.name}".` });
+      setProductToDelete(null);
     } catch (error) {
-      const message = axios.isAxiosError(error)
-        ? (error.response?.data?.message ?? 'Failed to create product.')
-        : 'Failed to create product.';
-      setStatusBanner({
+      setFlash({
         type: 'error',
-        text: Array.isArray(message) ? message.join(', ') : String(message),
-      });
-    }
-  };
-
-  const openEditDialog = (product: ProductItem) => {
-    setEditingProduct(product);
-    resetEditForm({
-      name: product.name,
-      price: product.price,
-      stripeProductId: product.stripeProductId ?? '',
-    });
-  };
-
-  const onSaveEditProduct = async (values: EditProductValues) => {
-    if (!editingProduct) return;
-    setStatusBanner(null);
-    const trimmedStripeId = values.stripeProductId.trim();
-    try {
-      await axios.patch(`/v1/products/${editingProduct.id}`, {
-        name: values.name.trim(),
-        price: Number(values.price),
-        ...(trimmedStripeId ? { stripeProductId: trimmedStripeId } : {}),
-      });
-      await queryClient?.invalidateQueries({ queryKey: ['productsData'] });
-      await queryClient?.invalidateQueries({ queryKey: ['product', editingProduct.id] });
-      await refetchProducts();
-      setStatusBanner({ type: 'success', text: `Updated product "${values.name}".` });
-      setEditingProduct(null);
-    } catch (error) {
-      const message = axios.isAxiosError(error)
-        ? (error.response?.data?.message ?? 'Failed to update product.')
-        : 'Failed to update product.';
-      setStatusBanner({
-        type: 'error',
-        text: Array.isArray(message) ? message.join(', ') : String(message),
-      });
-    }
-  };
-
-  const handleDeleteProduct = async (product: ProductItem) => {
-    setStatusBanner(null);
-    try {
-      await axios.delete(`/v1/products/${product.id}`);
-      await queryClient?.invalidateQueries({ queryKey: ['productsData'] });
-      await queryClient?.invalidateQueries({ queryKey: ['orderData'] });
-      await refetchProducts();
-      setStatusBanner({ type: 'success', text: `Deleted product "${product.name}".` });
-    } catch {
-      setStatusBanner({ type: 'error', text: `Failed to delete product "${product.name}".` });
-    }
-  };
-
-  const handleTriggerStripeSync = async () => {
-    setIsSyncing(true);
-    setStatusBanner(null);
-    try {
-      const res = await axios.post<{
-        message: string;
-        result: { processed: number; created: number; skipped: number };
-      }>('/v1/jobs/sync-stripe', {});
-      const { processed, created, skipped } = res.data.result;
-      await queryClient?.invalidateQueries({ queryKey: ['orderData'] });
-      setStatusBanner({
-        type: 'success',
-        text: `${res.data.message} (processed: ${processed}, created: ${created}, skipped: ${skipped})`,
-      });
-    } catch {
-      setStatusBanner({
-        type: 'error',
-        text: 'Stripe synchronization failed. Verify backend Stripe credentials.',
+        text: extractApiError(error, `Failed to delete product "${productToDelete.name}".`),
       });
     } finally {
-      setIsSyncing(false);
+      setIsDeleting(false);
     }
   };
 
-  const onCheckoutSubmit = async (values: CheckoutFormValues) => {
-    setStatusBanner(null);
-    try {
-      await axios.post('/v1/stripe/payments', {
-        priceId: values.priceId.trim(),
-        quantity: Number(values.quantity),
-      });
-      setStatusBanner({
-        type: 'success',
-        text: 'Stripe checkout session initiated.',
-      });
-    } catch (error) {
-      const msg = axios.isAxiosError(error)
-        ? (error.response?.data?.message ??
-          'Stripe checkout request failed or redirected externally.')
-        : 'Stripe checkout request failed.';
-      setStatusBanner({
-        type: 'error',
-        text: Array.isArray(msg) ? msg.join(', ') : String(msg),
-      });
-    }
-  };
-
-  const handlePrepareCheckout = (product: ProductItem) => {
-    setSelectedCheckoutName(product.name);
-    setCheckoutFocus('priceId');
-  };
-
-  const nameInputId = `${idPrefix}-product-name`;
-  const priceInputId = `${idPrefix}-product-price`;
-  const descInputId = `${idPrefix}-product-description`;
-  const stripeProdInputId = `${idPrefix}-product-stripe-id`;
-  const checkoutPriceId = `${idPrefix}-checkout-price-id`;
-  const checkoutQtyId = `${idPrefix}-checkout-qty`;
-  const editNameId = `${idPrefix}-edit-name`;
-  const editPriceId = `${idPrefix}-edit-price`;
-  const editStripeId = `${idPrefix}-edit-stripe`;
+  const searchInputId = `${idPrefix}-products-search`;
 
   return (
-    <Container component="section" maxWidth="xl">
-      <Header
-        userName={userSnap.user.name}
-        joinedDate={userSnap.user.joinedDate}
-        onSubmitSearch={(query) => changeProductSearch(query)}
-      />
-
-      <PageBody>
-        <TopBar>
-          <PageTitle>Products Catalog</PageTitle>
-          <Button
-            variant="contained"
-            type="button"
-            disabled={isSyncing}
-            onClick={handleTriggerStripeSync}
-          >
-            {isSyncing ? 'Syncing Stripe...' : 'Sync Stripe Orders'}
+    <PageWrapper>
+      <PageHeaderRow>
+        <PageHeaderText>
+          <PageTitle>Products</PageTitle>
+          <PageSubtitle>
+            {productsQuery.isLoading
+              ? 'Loading catalog...'
+              : `${products.length} product${products.length === 1 ? '' : 's'} in catalog`}
+          </PageSubtitle>
+        </PageHeaderText>
+        <PageHeaderActions>
+          <Button component={Link} to="/products/new" variant="contained" color="primary">
+            Create Product
           </Button>
-        </TopBar>
+        </PageHeaderActions>
+      </PageHeaderRow>
 
-        {statusBanner && (
-          <Alert
-            severity={statusBanner.type}
-            role={statusBanner.type === 'error' ? 'alert' : 'status'}
-            onClose={() => setStatusBanner(null)}
+      {flash && (
+        <Alert
+          severity={flash.type}
+          role={flash.type === 'error' ? 'alert' : 'status'}
+          onClose={clearFlash}
+        >
+          {flash.text}
+        </Alert>
+      )}
+
+      <FilterToolbar aria-label="Filter products">
+        <SearchInputBox>
+          <SearchIcon fontSize="small" color="action" aria-hidden="true" />
+          <label htmlFor={searchInputId}>
+            <VisuallyHidden>Search products</VisuallyHidden>
+          </label>
+          <ToolbarSearchInput
+            id={searchInputId}
+            type="search"
+            placeholder="Search products by name..."
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            autoCorrect="off"
+            autoCapitalize="none"
+            spellCheck={false}
+          />
+        </SearchInputBox>
+
+        {searchInput && (
+          <Button
+            type="button"
+            variant="outlined"
+            color="secondary"
+            onClick={() => setSearchInput('')}
           >
-            {statusBanner.text}
-          </Alert>
+            Clear
+          </Button>
         )}
+      </FilterToolbar>
 
-        {productSnap.search && (
+      <CardPanel>
+        {productsQuery.isLoading ? (
+          <CircularProgress data-testid="products-loading-circle" />
+        ) : productsQuery.error ? (
           <Alert
-            severity="info"
+            severity="error"
             action={
-              <Button size="small" onClick={() => changeProductSearch('')}>
-                Clear
+              <Button size="small" onClick={() => void productsQuery.refetch()}>
+                Retry
               </Button>
             }
           >
-            Showing results for: {productSnap.search}
+            Failed to load products.
           </Alert>
-        )}
-
-        <TwoColumnGrid>
-          <Panel aria-label="Available products">
-            <PanelTitle>Catalog Items</PanelTitle>
-            {productsAreLoading ? (
-              <CircularProgress data-testid="products-loading-circle" />
-            ) : productsError ? (
-              <Alert
-                severity="error"
-                action={
-                  <Button size="small" onClick={() => refetchProducts()}>
-                    Retry
-                  </Button>
-                }
-              >
-                Failed to load products
-              </Alert>
-            ) : visibleProducts.length === 0 ? (
-              <ProductSubtext>
-                No products match your filter. Use the form to create a product or clear search.
-              </ProductSubtext>
-            ) : (
-              <ProductList>
-                {visibleProducts.map((product) => (
-                  <ProductCard key={product.id}>
-                    <ProductMeta>
-                      <ProductNameLink to={`/products/${product.id}`}>
-                        {product.name}
-                      </ProductNameLink>
-                      <ProductSubtext>
-                        {formatCurrency(product.price)} ·{' '}
-                        {product.createdAt ? formatShortDate(product.createdAt) : 'Active'}
-                        {product.stripeProductId ? ` · Stripe: ${product.stripeProductId}` : ''}
-                      </ProductSubtext>
-                    </ProductMeta>
-                    <CardActions>
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        component={SafeLink}
-                        to={`/products/${product.id}`}
-                      >
-                        Details
-                      </Button>
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        type="button"
-                        onClick={() => handlePrepareCheckout(product)}
-                      >
-                        Checkout
-                      </Button>
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        type="button"
-                        aria-label={`Edit ${product.name}`}
-                        onClick={() => openEditDialog(product)}
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        size="small"
-                        color="error"
-                        variant="outlined"
-                        type="button"
-                        aria-label={`Delete ${product.name}`}
-                        onClick={() => handleDeleteProduct(product)}
-                      >
-                        Delete
-                      </Button>
-                    </CardActions>
-                  </ProductCard>
+        ) : products.length === 0 ? (
+          <EmptyStateText>
+            {searchInput
+              ? `No products found matching "${searchInput}".`
+              : 'No products in catalog yet. Click "Create Product" to add your first item.'}
+          </EmptyStateText>
+        ) : (
+          <TableWrapper tabIndex={0} role="region" aria-labelledby="products-table-caption">
+            <StyledTable aria-label="products-table">
+              <TableCaption id="products-table-caption">Products catalog</TableCaption>
+              <thead>
+                <tr>
+                  <Th scope="col">Product</Th>
+                  <Th scope="col">Price</Th>
+                  <Th scope="col">Stripe</Th>
+                  <Th scope="col">Created</Th>
+                  <Th scope="col">Actions</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {products.map((product) => (
+                  <tr key={product.id}>
+                    <RowTh scope="row">
+                      <ProductLink to={`/products/${product.id}`}>{product.name}</ProductLink>
+                    </RowTh>
+                    <Td>
+                      <strong>{formatCurrency(product.price)}</strong>
+                    </Td>
+                    <Td>
+                      {product.stripeProductId ? (
+                        <BadgePill $tone="accent" title={product.stripeProductId}>
+                          {product.stripePriceId ? 'Checkout ready' : 'Linked'}
+                        </BadgePill>
+                      ) : (
+                        <BadgePill $tone="neutral">Local only</BadgePill>
+                      )}
+                    </Td>
+                    <Td>
+                      {product.createdAt ? (
+                        <time dateTime={product.createdAt}>
+                          {formatShortDate(product.createdAt)}
+                        </time>
+                      ) : (
+                        '—'
+                      )}
+                    </Td>
+                    <Td>
+                      <RowActions>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="secondary"
+                          component={Link}
+                          to={`/products/${product.id}`}
+                        >
+                          View
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="primary"
+                          component={Link}
+                          to={`/products/${product.id}/edit`}
+                          aria-label={`Edit ${product.name}`}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="error"
+                          type="button"
+                          aria-label={`Delete ${product.name}`}
+                          onClick={() => setProductToDelete(product)}
+                        >
+                          Delete
+                        </Button>
+                      </RowActions>
+                    </Td>
+                  </tr>
                 ))}
-              </ProductList>
-            )}
-          </Panel>
+              </tbody>
+            </StyledTable>
+          </TableWrapper>
+        )}
+      </CardPanel>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <Panel aria-labelledby={`${idPrefix}-create-title`}>
-              <PanelTitle id={`${idPrefix}-create-title`}>Create Product</PanelTitle>
-              <FormStack
-                aria-labelledby={`${idPrefix}-create-title`}
-                noValidate
-                onSubmit={handleCreateSubmit(onCreateProduct)}
-              >
-                <FieldGroup>
-                  <FieldLabel htmlFor={nameInputId}>Product Name</FieldLabel>
-                  <StyledInput
-                    id={nameInputId}
-                    type="text"
-                    required
-                    aria-invalid={createErrors.name ? 'true' : 'false'}
-                    aria-describedby={createErrors.name ? `${nameInputId}-error` : undefined}
-                    {...registerCreate('name', { required: 'Product name is required' })}
-                  />
-                  {createErrors.name && (
-                    <ErrorText id={`${nameInputId}-error`}>{createErrors.name.message}</ErrorText>
-                  )}
-                </FieldGroup>
-
-                <FieldGroup>
-                  <FieldLabel htmlFor={priceInputId}>Price (USD)</FieldLabel>
-                  <StyledInput
-                    id={priceInputId}
-                    type="number"
-                    step="0.01"
-                    min="0.01"
-                    required
-                    aria-invalid={createErrors.price ? 'true' : 'false'}
-                    aria-describedby={createErrors.price ? `${priceInputId}-error` : undefined}
-                    {...registerCreate('price', {
-                      valueAsNumber: true,
-                      required: 'Price is required',
-                      min: { value: 0.01, message: 'Price must be positive' },
-                    })}
-                  />
-                  {createErrors.price && (
-                    <ErrorText id={`${priceInputId}-error`}>{createErrors.price.message}</ErrorText>
-                  )}
-                </FieldGroup>
-
-                <FieldGroup>
-                  <FieldLabel htmlFor={descInputId}>Description (optional)</FieldLabel>
-                  <StyledInput
-                    id={descInputId}
-                    type="text"
-                    aria-invalid="false"
-                    {...registerCreate('description')}
-                  />
-                </FieldGroup>
-
-                <FieldGroup>
-                  <FieldLabel htmlFor={stripeProdInputId}>
-                    Stripe Product ID (optional, skips Stripe creation)
-                  </FieldLabel>
-                  <StyledInput
-                    id={stripeProdInputId}
-                    type="text"
-                    placeholder="prod_..."
-                    aria-invalid="false"
-                    {...registerCreate('stripeProductId')}
-                  />
-                </FieldGroup>
-
-                <Button type="submit" variant="contained" disabled={isCreating}>
-                  {isCreating ? 'Creating...' : 'Create Product'}
-                </Button>
-              </FormStack>
-            </Panel>
-
-            <Panel aria-labelledby={`${idPrefix}-checkout-title`}>
-              <PanelTitle id={`${idPrefix}-checkout-title`}>
-                Stripe Checkout{selectedCheckoutName ? `: ${selectedCheckoutName}` : ''}
-              </PanelTitle>
-              <FormStack
-                aria-labelledby={`${idPrefix}-checkout-title`}
-                noValidate
-                onSubmit={handleCheckoutSubmit(onCheckoutSubmit)}
-              >
-                <FieldGroup>
-                  <FieldLabel htmlFor={checkoutPriceId}>Stripe Price ID</FieldLabel>
-                  <StyledInput
-                    id={checkoutPriceId}
-                    type="text"
-                    placeholder="price_..."
-                    required
-                    aria-invalid={checkoutErrors.priceId ? 'true' : 'false'}
-                    aria-describedby={
-                      checkoutErrors.priceId ? `${checkoutPriceId}-error` : undefined
-                    }
-                    {...registerCheckout('priceId', { required: 'Stripe Price ID is required' })}
-                  />
-                  {checkoutErrors.priceId && (
-                    <ErrorText id={`${checkoutPriceId}-error`}>
-                      {checkoutErrors.priceId.message}
-                    </ErrorText>
-                  )}
-                </FieldGroup>
-
-                <FieldGroup>
-                  <FieldLabel htmlFor={checkoutQtyId}>Quantity</FieldLabel>
-                  <StyledInput
-                    id={checkoutQtyId}
-                    type="number"
-                    min={1}
-                    required
-                    aria-invalid={checkoutErrors.quantity ? 'true' : 'false'}
-                    aria-describedby={
-                      checkoutErrors.quantity ? `${checkoutQtyId}-error` : undefined
-                    }
-                    {...registerCheckout('quantity', {
-                      valueAsNumber: true,
-                      required: 'Quantity is required',
-                      min: { value: 1, message: 'Quantity must be at least 1' },
-                    })}
-                  />
-                  {checkoutErrors.quantity && (
-                    <ErrorText id={`${checkoutQtyId}-error`}>
-                      {checkoutErrors.quantity.message}
-                    </ErrorText>
-                  )}
-                </FieldGroup>
-
-                <Button type="submit" variant="contained" disabled={isCheckingOut}>
-                  {isCheckingOut ? 'Processing...' : 'Pay with Stripe'}
-                </Button>
-              </FormStack>
-            </Panel>
-          </div>
-        </TwoColumnGrid>
-      </PageBody>
-
-      <Dialog
-        open={Boolean(editingProduct)}
-        onClose={() => setEditingProduct(null)}
-        aria-labelledby={`${idPrefix}-edit-dialog-title`}
-      >
-        <DialogTitle id={`${idPrefix}-edit-dialog-title`}>Edit Product</DialogTitle>
-        <form onSubmit={handleEditSubmit(onSaveEditProduct)} noValidate>
-          <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 300 }}>
-            <FieldGroup>
-              <FieldLabel htmlFor={editNameId}>Edit Product Name</FieldLabel>
-              <StyledInput
-                id={editNameId}
-                type="text"
-                required
-                aria-invalid={editErrors.name ? 'true' : 'false'}
-                {...registerEdit('name', { required: 'Product name is required' })}
-              />
-              {editErrors.name && <ErrorText>{editErrors.name.message}</ErrorText>}
-            </FieldGroup>
-
-            <FieldGroup>
-              <FieldLabel htmlFor={editPriceId}>Edit Price (USD)</FieldLabel>
-              <StyledInput
-                id={editPriceId}
-                type="number"
-                step="0.01"
-                min="0.01"
-                required
-                aria-invalid={editErrors.price ? 'true' : 'false'}
-                {...registerEdit('price', {
-                  valueAsNumber: true,
-                  required: 'Price is required',
-                  min: { value: 0.01, message: 'Price must be positive' },
-                })}
-              />
-              {editErrors.price && <ErrorText>{editErrors.price.message}</ErrorText>}
-            </FieldGroup>
-
-            <FieldGroup>
-              <FieldLabel htmlFor={editStripeId}>Stripe Product ID (optional)</FieldLabel>
-              <StyledInput
-                id={editStripeId}
-                type="text"
-                placeholder="prod_..."
-                aria-invalid="false"
-                {...registerEdit('stripeProductId')}
-              />
-            </FieldGroup>
-          </DialogContent>
-          <DialogActions>
-            <Button type="button" onClick={() => setEditingProduct(null)}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="contained" disabled={isUpdating}>
-              {isUpdating ? 'Saving...' : 'Save Changes'}
-            </Button>
-          </DialogActions>
-        </form>
-      </Dialog>
-    </Container>
+      <ConfirmDialog
+        open={Boolean(productToDelete)}
+        title={`Delete "${productToDelete?.name ?? ''}"?`}
+        description="This permanently removes the product from the database. Existing orders referencing it will remain intact."
+        confirmLabel="Delete Product"
+        isConfirming={isDeleting}
+        onConfirm={() => void handleConfirmDelete()}
+        onCancel={() => setProductToDelete(null)}
+      />
+    </PageWrapper>
   );
 };
 

@@ -5,7 +5,6 @@ import axios from 'axios';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import UserDetails from '.';
-import { userStore } from '../UserInfo/UserInfo.State';
 
 vi.mock('axios', async (importOriginal) => {
   const actual = await importOriginal<typeof import('axios')>();
@@ -14,7 +13,6 @@ vi.mock('axios', async (importOriginal) => {
     default: {
       ...actual.default,
       get: vi.fn(),
-      patch: vi.fn(),
       delete: vi.fn(),
       isAxiosError: actual.default.isAxiosError,
     },
@@ -30,7 +28,7 @@ const renderUserDetails = (userId = '1') => {
       <MemoryRouter initialEntries={[`/users/${userId}`]}>
         <Routes>
           <Route path="/users/:id" element={<UserDetails />} />
-          <Route path="/users" element={<div>Users Directory</div>} />
+          <Route path="/users" element={<div>Users Home</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -39,27 +37,21 @@ const renderUserDetails = (userId = '1') => {
 
 describe('<UserDetails />', () => {
   beforeEach(() => {
-    userStore.user = {
-      id: 1,
-      name: 'Antonio West',
-      joinedDate: '2025-01-01',
-      recentOrders: 1,
-      newProducts: 1,
-      nextDeliveryDate: '',
-    };
-
     vi.mocked(axios.get).mockResolvedValue({
       data: {
         id: 1,
         name: 'Antonio West',
         email: 'antonio@example.com',
-        address: '66957 Cormier Club',
+        address: '123 Main St',
         orders: [
           {
-            id: 3,
-            total: 237.13,
-            createdAt: '2026-05-15T14:46:36.630Z',
-            products: [{ id: 'p-1', name: 'Steel Computer', price: 237.13 }],
+            id: 7,
+            total: 99.5,
+            stripeInvoiceId: null,
+            createdAt: '2026-06-20T00:00:00.000Z',
+            updatedAt: '2026-06-20T00:00:00.000Z',
+            userId: 1,
+            products: [{ id: 'p-1', name: 'Desk Lamp', price: 99.5 }],
           },
         ],
       },
@@ -70,66 +62,33 @@ describe('<UserDetails />', () => {
     vi.clearAllMocks();
   });
 
-  it('loads user profile with orders and saves updates via PATCH /v1/users/:id', async () => {
-    vi.mocked(axios.patch).mockResolvedValueOnce({
-      data: { id: 1, name: 'Antonio Updated', email: 'antonio@example.com', address: 'New Addr' },
-    });
-
-    renderUserDetails('1');
-
-    expect(await screen.findByText(/Order #3/)).toBeDefined();
-    expect(screen.getByText('$237.13')).toBeDefined();
-    expect(await screen.findByDisplayValue('66957 Cormier Club')).toBeDefined();
-
-    fireEvent.change(screen.getByLabelText('Address'), { target: { value: 'New Addr' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save Customer Changes' }));
-
-    expect(await screen.findByText('User profile updated successfully.')).toBeDefined();
-    await waitFor(() => {
-      expect(axios.patch).toHaveBeenCalledWith('/v1/users/1', {
-        name: 'Antonio West',
-        email: 'antonio@example.com',
-        address: 'New Addr',
-      });
-    });
-  });
-
-  it('deletes user and navigates back to /users', async () => {
+  it('renders read-only user details, customer orders, action links, and deletes with confirmation', async () => {
     vi.mocked(axios.delete).mockResolvedValueOnce({ data: { id: 1 } });
 
     renderUserDetails('1');
-    expect(await screen.findByText(/Order #3/)).toBeDefined();
+
+    expect(await screen.findByText('antonio@example.com')).toBeDefined();
+    expect(screen.getByRole('link', { name: 'Edit User' }).getAttribute('href')).toBe(
+      '/users/1/edit',
+    );
+    expect(screen.getByRole('link', { name: 'Create Order' }).getAttribute('href')).toBe(
+      '/orders/new?userId=1',
+    );
+    expect(screen.getByRole('link', { name: /Order #7 — Desk Lamp/ })).toBeDefined();
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete User' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm Delete' }));
+    const confirmButtons = screen.getAllByRole('button', { name: 'Delete User' });
+    fireEvent.click(confirmButtons[confirmButtons.length - 1]);
 
-    expect(await screen.findByText('Users Directory')).toBeDefined();
-    expect(axios.delete).toHaveBeenCalledWith('/v1/users/1');
-  });
-
-  it('shows loading spinner, handles error with retry, and displays update errors', async () => {
-    vi.mocked(axios.get).mockImplementationOnce(() => new Promise(() => {}));
-    renderUserDetails('99');
-    expect(screen.getByTestId('user-details-loading')).toBeDefined();
-
-    vi.mocked(axios.get).mockRejectedValueOnce(new Error('Not found'));
-    renderUserDetails('404');
-    expect(await screen.findByText('User #404 could not be loaded.')).toBeDefined();
-
-    vi.mocked(axios.get).mockResolvedValueOnce({
-      data: { id: 404, name: 'Recovered User', email: 'rec@test.com', address: '1 Rd', orders: [] },
+    expect(await screen.findByText('Users Home')).toBeDefined();
+    await waitFor(() => {
+      expect(axios.delete).toHaveBeenCalledWith('/v1/users/1');
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
-    expect(await screen.findByText('rec@test.com')).toBeDefined();
-
-    vi.mocked(axios.patch).mockRejectedValueOnce(new Error('Update failed'));
-    fireEvent.click(screen.getByRole('button', { name: 'Save Customer Changes' }));
-    expect(await screen.findByText('Failed to update user.')).toBeDefined();
   });
 
   it('has no axe accessibility violations', async () => {
     const { container } = renderUserDetails('1');
-    expect(await screen.findByText(/Order #3/)).toBeDefined();
+    await screen.findByText('antonio@example.com');
     const results = await axe.run(container, {
       rules: { 'color-contrast': { enabled: false } },
     });

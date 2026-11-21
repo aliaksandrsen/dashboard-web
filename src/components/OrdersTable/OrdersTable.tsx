@@ -1,155 +1,25 @@
 import { useMemo, useState } from 'react';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
-import FilterListIcon from '@mui/icons-material/FilterList';
-import SearchIcon from '@mui/icons-material/Search';
 import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
+import Button from '@mui/material/Button';
+import { Link } from 'react-router-dom';
 import styled from 'styled-components';
-import { type Order, OrderStatus, type OrderStatusKeys } from '../../pages/UserInfo/UserInfo.State';
-import {
-  formatCurrency,
-  formatOrderStatusLabel,
-  formatShortDate,
-  getDateTimestamp,
-} from '../../utils/helpers';
-import SafeLink from '../SafeLink';
+import type { ApiOrder } from '../../types/api';
+import { formatCurrency, formatShortDate, getDateTimestamp } from '../../utils/helpers';
+import { BadgePill, CardPanel, EmptyStateText, VisuallyHidden } from '../ui/PagePrimitives';
 
-export type OrderSortColumn =
-  | 'productName'
-  | 'status'
-  | 'orderedDate'
-  | 'totalAmount'
-  | 'hasBeenReviewed';
+export type OrderSortColumn = 'id' | 'customer' | 'createdAt' | 'total' | 'source';
 export type SortDirection = 'ascending' | 'descending';
 
 export interface OrdersTableProps {
-  orders: readonly Order[];
-  filter?: OrderStatusKeys | undefined;
-  onFilterChange?: (nextFilter: OrderStatusKeys | undefined) => void;
-  searchQuery?: string;
-  onSearchChange?: (nextQuery: string) => void;
-  onDeleteOrder?: (order: Order) => void;
+  orders: readonly ApiOrder[];
+  onDeleteOrder?: (order: ApiOrder) => void;
   pageSize?: number;
 }
 
-const ITEMS_PER_PAGE = 6;
+const ITEMS_PER_PAGE = 10;
 const textCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
-
-const SectionCard = styled.section`
-  background-color: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 20px;
-`;
-
-const HeaderRow = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 16px;
-`;
-
-const TitleBlock = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-`;
-
-const SectionTitle = styled.h2`
-  margin: 0;
-  font-size: 1.125rem;
-  font-weight: 600;
-  color: #111827;
-`;
-
-const SectionSubtitle = styled.p`
-  margin: 0;
-  font-size: 0.875rem;
-  color: #6b7280;
-`;
-
-const ControlsRow = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-`;
-
-const SearchInputWrapper = styled.div`
-  position: relative;
-  display: flex;
-  align-items: center;
-  background-color: #f3f4f6;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 0 12px;
-  min-height: 40px;
-
-  &:focus-within {
-    outline: 2px solid #0b57d0;
-    outline-offset: 1px;
-    background-color: #ffffff;
-  }
-`;
-
-const NativeSearchInput = styled.input`
-  border: 0;
-  background: transparent;
-  padding: 8px 0 8px 8px;
-  font: inherit;
-  font-size: max(1rem, 0.875rem);
-  color: #111827;
-  min-width: 170px;
-
-  &:focus {
-    outline: none;
-  }
-`;
-
-const FilterWrapper = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background-color: #f3f4f6;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 0 10px;
-  min-height: 40px;
-
-  &:focus-within {
-    outline: 2px solid #0b57d0;
-    outline-offset: 1px;
-    background-color: #ffffff;
-  }
-`;
-
-const FilterSelect = styled.select`
-  border: 0;
-  background: transparent;
-  font: inherit;
-  font-size: max(1rem, 0.875rem);
-  color: #111827;
-  padding: 8px 4px;
-  cursor: pointer;
-
-  &:focus {
-    outline: none;
-  }
-`;
-
-const VisuallyHidden = styled.span`
-  position: absolute;
-  clip-path: inset(50%);
-  overflow: hidden;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  border: 0;
-  white-space: nowrap;
-`;
 
 const TableWrapper = styled.div`
   overflow-x: auto;
@@ -164,7 +34,7 @@ const TableWrapper = styled.div`
 
 const StyledTable = styled.table`
   width: 100%;
-  min-inline-size: 620px;
+  min-inline-size: 760px;
   border-collapse: separate;
   border-spacing: 0;
   text-align: left;
@@ -187,22 +57,22 @@ const TableHead = styled.thead`
   position: sticky;
   inset-block-start: 0;
   z-index: 1;
-  background-color: #f9fafb;
+  background-color: #f8fafc;
 `;
 
-const HeaderCell = styled.th`
-  border-bottom: 1px solid #e5e7eb;
+const SortableHeaderCell = styled.th`
+  border-bottom: 1px solid #e2e8f0;
   font-weight: 600;
-  color: #374151;
+  color: #334155;
   padding: 0;
   white-space: nowrap;
 `;
 
 const PlainHeaderCell = styled.th`
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid #e2e8f0;
   font-weight: 600;
-  color: #374151;
-  padding: 10px 12px;
+  color: #334155;
+  padding: 12px;
   white-space: nowrap;
 `;
 
@@ -212,7 +82,7 @@ const SortButton = styled.button`
   justify-content: space-between;
   gap: 6px;
   width: 100%;
-  min-height: 40px;
+  min-height: 44px;
   min-width: 24px;
   padding: 10px 12px;
   border: 0;
@@ -224,7 +94,7 @@ const SortButton = styled.button`
   cursor: pointer;
 
   &:hover {
-    background-color: #f3f4f6;
+    background-color: #f1f5f9;
   }
 
   &:focus-visible {
@@ -236,7 +106,7 @@ const SortButton = styled.button`
 const BodyRow = styled.tr`
   &:hover td,
   &:hover th {
-    background-color: #f9fafb;
+    background-color: #f8fafc;
   }
 `;
 
@@ -244,130 +114,89 @@ const RowHeaderCell = styled.th`
   position: sticky;
   inset-inline-start: 0;
   background-color: #ffffff;
-  font-weight: 500;
-  color: #111827;
+  font-weight: 600;
+  color: #0f172a;
   padding: 14px 12px;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid #f1f5f9;
   white-space: nowrap;
 `;
 
-const OrderLink = styled(SafeLink)`
-  color: #111827;
+const BodyCell = styled.td`
+  padding: 14px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155;
+  vertical-align: middle;
+`;
+
+const CellLink = styled(Link)`
+  color: #1d4ed8;
   font-weight: 600;
   text-decoration: none;
 
   &:hover,
   &:focus-visible {
     text-decoration: underline;
-    color: #0b57d0;
+  }
+
+  &:focus-visible {
+    outline: 2px solid #0b57d0;
+    outline-offset: 2px;
+    border-radius: 4px;
   }
 `;
 
-const BodyCell = styled.td`
-  padding: 14px 12px;
-  border-bottom: 1px solid #f3f4f6;
-  color: #374151;
+const ProductsCellText = styled.span`
+  display: inline-block;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+  vertical-align: bottom;
 `;
 
 const ActionsCellGroup = styled.div`
   display: inline-flex;
   align-items: center;
   gap: 8px;
-`;
-
-const DetailsLink = styled(SafeLink)`
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 10px;
-  border-radius: 6px;
-  background-color: #f3f4f6;
-  color: #111827;
-  text-decoration: none;
-  font-size: 0.75rem;
-  font-weight: 600;
-
-  &:hover,
-  &:focus-visible {
-    background-color: #e5e7eb;
-  }
-`;
-
-const DeleteRowButton = styled.button`
-  border: 0;
-  border-radius: 6px;
-  padding: 4px 10px;
-  min-height: 28px;
-  font: inherit;
-  font-size: 0.75rem;
-  font-weight: 600;
-  background-color: #fee2e2;
-  color: #991b1b;
-  cursor: pointer;
-
-  &:hover,
-  &:focus-visible {
-    background-color: #fecaca;
-  }
-`;
-
-const StatusBadge = styled.span<{ $status: OrderStatusKeys }>`
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  background-color: ${({ $status }) => {
-    switch ($status) {
-      case OrderStatus.Shipped:
-        return '#e5e7eb';
-      case OrderStatus.Pending:
-        return '#f3f4f6';
-      case OrderStatus.OutOfStock:
-        return '#fee2e2';
-    }
-  }};
-  color: ${({ $status }) => {
-    switch ($status) {
-      case OrderStatus.Shipped:
-        return '#1f2937';
-      case OrderStatus.Pending:
-        return '#374151';
-      case OrderStatus.OutOfStock:
-        return '#991b1b';
-    }
-  }};
+  white-space: nowrap;
 `;
 
 const PaginationBar = styled.nav`
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: flex-start;
-  gap: 8px;
-  margin-top: 16px;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 8px;
+`;
+
+const PageControls = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
 `;
 
 const PageNavButton = styled.button`
-  border: 0;
-  background: transparent;
-  color: #111827;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #0f172a;
   font: inherit;
   font-size: 0.875rem;
   font-weight: 500;
-  padding: 6px 10px;
+  padding: 6px 12px;
   min-height: 36px;
   border-radius: 6px;
   cursor: pointer;
 
   &:disabled {
-    color: #9ca3af;
+    color: #94a3b8;
+    border-color: #e2e8f0;
     cursor: not-allowed;
   }
 
   &:not(:disabled):hover {
-    background-color: #f3f4f6;
+    background-color: #f1f5f9;
   }
 
   &:focus-visible {
@@ -377,19 +206,19 @@ const PageNavButton = styled.button`
 `;
 
 const PageNumberButton = styled.button<{ $active: boolean }>`
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: 0;
+  min-width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  border: 1px solid ${({ $active }) => ($active ? '#1d4ed8' : '#cbd5e1')};
   font: inherit;
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   font-weight: ${({ $active }) => ($active ? 700 : 500)};
-  background-color: ${({ $active }) => ($active ? '#6b7280' : '#e5e7eb')};
-  color: ${({ $active }) => ($active ? '#ffffff' : '#111827')};
+  background-color: ${({ $active }) => ($active ? '#1d4ed8' : '#ffffff')};
+  color: ${({ $active }) => ($active ? '#ffffff' : '#0f172a')};
   cursor: pointer;
 
   &:hover {
-    background-color: ${({ $active }) => ($active ? '#4b5563' : '#d1d5db')};
+    background-color: ${({ $active }) => ($active ? '#1e40af' : '#f1f5f9')};
   }
 
   &:focus-visible {
@@ -398,121 +227,74 @@ const PageNumberButton = styled.button<{ $active: boolean }>`
   }
 `;
 
+const PageMeta = styled.span`
+  font-size: 0.875rem;
+  color: #475569;
+`;
+
 interface ColumnConfig {
   key: OrderSortColumn;
   label: string;
 }
 
-const COLUMNS: ColumnConfig[] = [
-  { key: 'productName', label: 'Product' },
-  { key: 'status', label: 'Status' },
-  { key: 'orderedDate', label: 'Date' },
-  { key: 'totalAmount', label: 'Total Amount' },
-  { key: 'hasBeenReviewed', label: 'Reviewed' },
-];
+const SORTABLE_COLUMNS: Record<OrderSortColumn, ColumnConfig> = {
+  id: { key: 'id', label: 'Order' },
+  customer: { key: 'customer', label: 'Customer' },
+  createdAt: { key: 'createdAt', label: 'Created' },
+  total: { key: 'total', label: 'Total' },
+  source: { key: 'source', label: 'Source' },
+};
 
 const compareOrders = (
-  a: Order,
-  b: Order,
+  a: ApiOrder,
+  b: ApiOrder,
   column: OrderSortColumn,
   direction: SortDirection,
 ): number => {
   const factor = direction === 'ascending' ? 1 : -1;
 
   switch (column) {
-    case 'totalAmount':
-      return factor * (a.totalAmount - b.totalAmount);
-    case 'orderedDate': {
-      const timeA = a.status === OrderStatus.OutOfStock ? 0 : getDateTimestamp(a.orderedDate);
-      const timeB = b.status === OrderStatus.OutOfStock ? 0 : getDateTimestamp(b.orderedDate);
-      return factor * (timeA - timeB);
-    }
-    case 'status':
+    case 'id':
+      return factor * (a.id - b.id);
+    case 'total':
+      return factor * (a.total - b.total);
+    case 'createdAt':
+      return factor * (getDateTimestamp(a.createdAt) - getDateTimestamp(b.createdAt));
+    case 'source':
       return (
         factor *
-        textCollator.compare(formatOrderStatusLabel(a.status), formatOrderStatusLabel(b.status))
+        textCollator.compare(
+          a.stripeInvoiceId ? 'Stripe' : 'Manual',
+          b.stripeInvoiceId ? 'Stripe' : 'Manual',
+        )
       );
-    case 'hasBeenReviewed':
+    case 'customer':
       return (
-        factor *
-        textCollator.compare(a.hasBeenReviewed ? 'Yes' : 'No', b.hasBeenReviewed ? 'Yes' : 'No')
+        factor * textCollator.compare(a.user?.name ?? 'Unassigned', b.user?.name ?? 'Unassigned')
       );
-    case 'productName':
-    default:
-      return factor * textCollator.compare(a.productName, b.productName);
   }
 };
 
-const OrdersTable = ({
-  orders,
-  filter,
-  onFilterChange,
-  searchQuery,
-  onSearchChange,
-  onDeleteOrder,
-  pageSize = ITEMS_PER_PAGE,
-}: OrdersTableProps) => {
-  const [localSearch, setLocalSearch] = useState('');
-  const [localFilter, setLocalFilter] = useState<OrderStatusKeys | undefined>(undefined);
+const OrdersTable = ({ orders, onDeleteOrder, pageSize = ITEMS_PER_PAGE }: OrdersTableProps) => {
   const [sortColumn, setSortColumn] = useState<OrderSortColumn | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>('ascending');
   const [currentPage, setCurrentPage] = useState(1);
   const [liveAnnouncement, setLiveAnnouncement] = useState('');
 
-  const activeSearch = searchQuery !== undefined ? searchQuery : localSearch;
-  const activeFilter = onFilterChange ? filter : localFilter;
-
-  const handleSearchInput = (value: string) => {
-    if (onSearchChange) {
-      onSearchChange(value);
-    } else {
-      setLocalSearch(value);
-    }
-    setCurrentPage(1);
-  };
-
-  const handleFilterSelect = (value: string) => {
-    const parsed = value === '' ? undefined : (value as OrderStatusKeys);
-    if (onFilterChange) {
-      onFilterChange(parsed);
-    } else {
-      setLocalFilter(parsed);
-    }
-    setCurrentPage(1);
-  };
-
-  const filteredAndSortedOrders = useMemo(() => {
-    const normalizedQuery = activeSearch.trim().toLowerCase();
-
-    const filtered = orders.filter((order) => {
-      if (activeFilter && order.status !== activeFilter) {
-        return false;
-      }
-      if (!normalizedQuery) {
-        return true;
-      }
-      return (
-        order.productName.toLowerCase().includes(normalizedQuery) ||
-        order.id.toLowerCase().includes(normalizedQuery) ||
-        (order.userName?.toLowerCase().includes(normalizedQuery) ?? false) ||
-        formatOrderStatusLabel(order.status).toLowerCase().includes(normalizedQuery)
-      );
-    });
-
+  const sortedOrders = useMemo(() => {
     if (!sortColumn) {
-      return filtered;
+      return orders;
     }
+    return [...orders].sort((a, b) => compareOrders(a, b, sortColumn, sortDirection));
+  }, [orders, sortColumn, sortDirection]);
 
-    return [...filtered].sort((a, b) => compareOrders(a, b, sortColumn, sortDirection));
-  }, [orders, activeFilter, activeSearch, sortColumn, sortDirection]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredAndSortedOrders.length / pageSize));
+  const totalPages = Math.max(1, Math.ceil(sortedOrders.length / pageSize));
   const safePage = Math.min(currentPage, totalPages);
 
   const visibleOrders = useMemo(() => {
     const start = (safePage - 1) * pageSize;
-    return filteredAndSortedOrders.slice(start, start + pageSize);
-  }, [filteredAndSortedOrders, safePage, pageSize]);
+    return sortedOrders.slice(start, start + pageSize);
+  }, [sortedOrders, safePage, pageSize]);
 
   const handleSort = (column: ColumnConfig) => {
     const nextDirection: SortDirection =
@@ -521,184 +303,181 @@ const OrdersTable = ({
     setSortColumn(column.key);
     setSortDirection(nextDirection);
     setCurrentPage(1);
-    setLiveAnnouncement(
-      `Sorted by ${column.label}, ${nextDirection}, ${filteredAndSortedOrders.length} rows`,
+    setLiveAnnouncement(`Sorted by ${column.label}, ${nextDirection}, ${sortedOrders.length} rows`);
+  };
+
+  const renderSortHeader = (column: ColumnConfig) => {
+    const isSorted = sortColumn === column.key;
+    return (
+      <SortableHeaderCell
+        key={column.key}
+        scope="col"
+        aria-sort={isSorted ? sortDirection : undefined}
+      >
+        <SortButton type="button" onClick={() => handleSort(column)}>
+          <span>{column.label}</span>
+          {isSorted ? (
+            sortDirection === 'ascending' ? (
+              <ArrowUpwardIcon fontSize="inherit" aria-hidden="true" />
+            ) : (
+              <ArrowDownwardIcon fontSize="inherit" aria-hidden="true" />
+            )
+          ) : (
+            <UnfoldMoreIcon fontSize="inherit" color="disabled" aria-hidden="true" />
+          )}
+        </SortButton>
+      </SortableHeaderCell>
     );
   };
 
   return (
-    <SectionCard aria-label="All orders section">
-      <HeaderRow>
-        <TitleBlock>
-          <SectionTitle>All orders</SectionTitle>
-          <SectionSubtitle>Monitor orders, totals, and open details to edit.</SectionSubtitle>
-        </TitleBlock>
-
-        <div role="search" aria-label="Filter orders">
-          <ControlsRow>
-            <SearchInputWrapper>
-              <SearchIcon fontSize="small" color="action" aria-hidden="true" />
-              <label htmlFor="orders-table-search">
-                <VisuallyHidden>Search orders</VisuallyHidden>
-              </label>
-              <NativeSearchInput
-                id="orders-table-search"
-                type="search"
-                placeholder="Search orders"
-                value={activeSearch}
-                onChange={(event) => handleSearchInput(event.target.value)}
-                autoCorrect="off"
-                autoCapitalize="none"
-                spellCheck={false}
-              />
-            </SearchInputWrapper>
-
-            <FilterWrapper>
-              <FilterListIcon fontSize="small" color="action" aria-hidden="true" />
-              <label htmlFor="orders-status-filter">
-                <VisuallyHidden>Filter orders by status</VisuallyHidden>
-              </label>
-              <FilterSelect
-                id="orders-status-filter"
-                value={activeFilter ?? ''}
-                onChange={(event) => handleFilterSelect(event.target.value)}
-              >
-                <option value="">Filter: All</option>
-                <option value={OrderStatus.Shipped}>Shipped</option>
-                <option value={OrderStatus.Pending}>Pending</option>
-                <option value={OrderStatus.OutOfStock}>Out of Stock</option>
-              </FilterSelect>
-            </FilterWrapper>
-          </ControlsRow>
-        </div>
-      </HeaderRow>
-
+    <CardPanel>
       <VisuallyHidden role="status" aria-live="polite">
         {liveAnnouncement}
       </VisuallyHidden>
 
-      <TableWrapper tabIndex={0} role="region" aria-labelledby="orders-table-caption">
-        <StyledTable aria-label="orders-table">
-          <TableCaption id="orders-table-caption">All orders</TableCaption>
-          <TableHead>
-            <tr>
-              {COLUMNS.map((column) => {
-                const isSorted = sortColumn === column.key;
-                return (
-                  <HeaderCell
-                    key={column.key}
-                    scope="col"
-                    aria-sort={isSorted ? sortDirection : undefined}
-                  >
-                    <SortButton type="button" onClick={() => handleSort(column)}>
-                      <span>{column.label}</span>
-                      {isSorted ? (
-                        sortDirection === 'ascending' ? (
-                          <ArrowUpwardIcon fontSize="inherit" aria-hidden="true" />
+      {sortedOrders.length === 0 ? (
+        <EmptyStateText>No orders match your current filters.</EmptyStateText>
+      ) : (
+        <>
+          <TableWrapper tabIndex={0} role="region" aria-labelledby="orders-table-caption">
+            <StyledTable aria-label="orders-table">
+              <TableCaption id="orders-table-caption">Orders list</TableCaption>
+              <TableHead>
+                <tr>
+                  {renderSortHeader(SORTABLE_COLUMNS.id)}
+                  {renderSortHeader(SORTABLE_COLUMNS.customer)}
+                  <PlainHeaderCell scope="col">Products</PlainHeaderCell>
+                  {renderSortHeader(SORTABLE_COLUMNS.createdAt)}
+                  {renderSortHeader(SORTABLE_COLUMNS.total)}
+                  {renderSortHeader(SORTABLE_COLUMNS.source)}
+                  <PlainHeaderCell scope="col">Actions</PlainHeaderCell>
+                </tr>
+              </TableHead>
+              <tbody>
+                {visibleOrders.map((order) => {
+                  const productsLabel =
+                    order.products && order.products.length > 0
+                      ? order.products.map((p) => p.name).join(', ')
+                      : 'No products';
+
+                  return (
+                    <BodyRow key={order.id}>
+                      <RowHeaderCell scope="row" data-value={order.id}>
+                        <CellLink to={`/orders/${order.id}`}>#{order.id}</CellLink>
+                      </RowHeaderCell>
+                      <BodyCell>
+                        {order.user ? (
+                          <CellLink to={`/users/${order.user.id}`}>{order.user.name}</CellLink>
                         ) : (
-                          <ArrowDownwardIcon fontSize="inherit" aria-hidden="true" />
-                        )
-                      ) : (
-                        <UnfoldMoreIcon fontSize="inherit" color="disabled" aria-hidden="true" />
-                      )}
-                    </SortButton>
-                  </HeaderCell>
-                );
-              })}
-              <PlainHeaderCell scope="col">Actions</PlainHeaderCell>
-            </tr>
-          </TableHead>
-          <tbody>
-            {visibleOrders.length === 0 ? (
-              <tr>
-                <BodyCell colSpan={6}>No orders match your criteria.</BodyCell>
-              </tr>
-            ) : (
-              visibleOrders.map((order) => {
-                const isOutOfStock = order.status === OrderStatus.OutOfStock;
-                const formattedDate = isOutOfStock
-                  ? 'No date available'
-                  : formatShortDate(order.orderedDate);
-
-                return (
-                  <BodyRow key={order.id}>
-                    <RowHeaderCell scope="row">
-                      <OrderLink to={`/orders/${order.id}`}>{order.productName}</OrderLink>
-                    </RowHeaderCell>
-                    <BodyCell>
-                      <StatusBadge $status={order.status}>
-                        {formatOrderStatusLabel(order.status)}
-                      </StatusBadge>
-                    </BodyCell>
-                    <BodyCell data-value={isOutOfStock ? 0 : getDateTimestamp(order.orderedDate)}>
-                      {isOutOfStock ? (
-                        formattedDate
-                      ) : (
-                        <time dateTime={order.orderedDate}>{formattedDate}</time>
-                      )}
-                    </BodyCell>
-                    <BodyCell data-value={order.totalAmount}>
-                      {formatCurrency(order.totalAmount)}
-                    </BodyCell>
-                    <BodyCell>{order.hasBeenReviewed ? 'Yes' : 'No'}</BodyCell>
-                    <BodyCell>
-                      <ActionsCellGroup>
-                        <DetailsLink
-                          to={`/orders/${order.id}`}
-                          aria-label={`View details for ${order.productName}`}
-                        >
-                          Details
-                        </DetailsLink>
-                        {onDeleteOrder && (
-                          <DeleteRowButton
-                            type="button"
-                            aria-label={`Delete order ${order.id}`}
-                            onClick={() => onDeleteOrder(order)}
-                          >
-                            Delete
-                          </DeleteRowButton>
+                          'Unassigned'
                         )}
-                      </ActionsCellGroup>
-                    </BodyCell>
-                  </BodyRow>
-                );
-              })
-            )}
-          </tbody>
-        </StyledTable>
-      </TableWrapper>
+                      </BodyCell>
+                      <BodyCell>
+                        <ProductsCellText title={productsLabel}>{productsLabel}</ProductsCellText>
+                      </BodyCell>
+                      <BodyCell data-value={getDateTimestamp(order.createdAt)}>
+                        {order.createdAt ? (
+                          <time dateTime={order.createdAt}>{formatShortDate(order.createdAt)}</time>
+                        ) : (
+                          '—'
+                        )}
+                      </BodyCell>
+                      <BodyCell data-value={order.total}>
+                        <strong>{formatCurrency(order.total)}</strong>
+                      </BodyCell>
+                      <BodyCell>
+                        {order.stripeInvoiceId ? (
+                          <BadgePill $tone="accent" title={order.stripeInvoiceId}>
+                            Stripe
+                          </BadgePill>
+                        ) : (
+                          <BadgePill $tone="neutral">Manual</BadgePill>
+                        )}
+                      </BodyCell>
+                      <BodyCell>
+                        <ActionsCellGroup>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="secondary"
+                            component={Link}
+                            to={`/orders/${order.id}`}
+                            aria-label={`View order #${order.id}`}
+                          >
+                            View
+                          </Button>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="primary"
+                            component={Link}
+                            to={`/orders/${order.id}/edit`}
+                            aria-label={`Edit order #${order.id}`}
+                          >
+                            Edit
+                          </Button>
+                          {onDeleteOrder && (
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="error"
+                              type="button"
+                              aria-label={`Delete order #${order.id}`}
+                              onClick={() => onDeleteOrder(order)}
+                            >
+                              Delete
+                            </Button>
+                          )}
+                        </ActionsCellGroup>
+                      </BodyCell>
+                    </BodyRow>
+                  );
+                })}
+              </tbody>
+            </StyledTable>
+          </TableWrapper>
 
-      <PaginationBar aria-label="Orders pagination">
-        <PageNavButton
-          type="button"
-          onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-          disabled={safePage <= 1}
-        >
-          Previous page
-        </PageNavButton>
+          {totalPages > 1 && (
+            <PaginationBar aria-label="Orders pagination">
+              <PageMeta>
+                Page {safePage} of {totalPages} ({sortedOrders.length} orders)
+              </PageMeta>
+              <PageControls>
+                <PageNavButton
+                  type="button"
+                  onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                  disabled={safePage <= 1}
+                >
+                  Previous
+                </PageNavButton>
 
-        {Array.from({ length: totalPages }, (_, index) => index + 1).map((pageNumber) => (
-          <PageNumberButton
-            key={pageNumber}
-            type="button"
-            $active={pageNumber === safePage}
-            aria-current={pageNumber === safePage ? 'page' : undefined}
-            aria-label={`Page ${pageNumber}`}
-            onClick={() => setCurrentPage(pageNumber)}
-          >
-            {pageNumber}
-          </PageNumberButton>
-        ))}
+                {Array.from({ length: totalPages }, (_, index) => index + 1).map((pageNumber) => (
+                  <PageNumberButton
+                    key={pageNumber}
+                    type="button"
+                    $active={pageNumber === safePage}
+                    aria-current={pageNumber === safePage ? 'page' : undefined}
+                    aria-label={`Page ${pageNumber}`}
+                    onClick={() => setCurrentPage(pageNumber)}
+                  >
+                    {pageNumber}
+                  </PageNumberButton>
+                ))}
 
-        <PageNavButton
-          type="button"
-          onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-          disabled={safePage >= totalPages}
-        >
-          Next page
-        </PageNavButton>
-      </PaginationBar>
-    </SectionCard>
+                <PageNavButton
+                  type="button"
+                  onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                  disabled={safePage >= totalPages}
+                >
+                  Next
+                </PageNavButton>
+              </PageControls>
+            </PaginationBar>
+          )}
+        </>
+      )}
+    </CardPanel>
   );
 };
 

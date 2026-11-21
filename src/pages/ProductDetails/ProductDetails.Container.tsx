@@ -1,51 +1,46 @@
-import { useContext, useEffect, useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
-import Container from '@mui/material/Container';
-import { QueryClientContext, useQuery } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { useForm } from 'react-hook-form';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import styled from 'styled-components';
-import { useSnapshot } from 'valtio';
-import Header from '../../components/Header';
-import SafeLink from '../../components/SafeLink';
-import { formatCurrency, formatShortDate } from '../../utils/helpers';
-import { type BackendProduct, changeProductSearch, userStore } from '../UserInfo/UserInfo.State';
+import Breadcrumbs from '../../components/Breadcrumbs';
+import ConfirmDialog from '../../components/ConfirmDialog';
+import {
+  CardPanel,
+  DetailList,
+  FieldError,
+  FieldGroup,
+  FieldHint,
+  FieldLabel,
+  FormStack,
+  PageHeaderActions,
+  PageHeaderRow,
+  PageHeaderText,
+  PageTitle,
+  PageWrapper,
+  PanelTitle,
+  TextInput,
+} from '../../components/ui/PagePrimitives';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { useFlashMessage } from '../../hooks/useFlashMessage';
+import { useProduct } from '../../hooks/useProducts';
+import type { StripeCheckoutResponse } from '../../types/api';
+import { extractApiError, formatCurrency, formatShortDate } from '../../utils/helpers';
+import { redirectToExternalUrl } from '../../utils/navigation';
 
-interface EditProductValues {
-  name: string;
-  price: number;
-  stripeProductId: string;
+interface CheckoutFormValues {
+  priceId: string;
+  quantity: number;
 }
 
-const PageBody = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  padding-bottom: 40px;
-`;
-
-const TopRow = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-`;
-
-const PageTitle = styled.h1`
-  margin: 0;
-  font-size: 1.375rem;
-  font-weight: 600;
-  color: #111827;
-`;
-
-const TwoColumnGrid = styled.div`
+const DetailGrid = styled.div`
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 24px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
   align-items: start;
 
   @media (max-width: 900px) {
@@ -53,333 +48,278 @@ const TwoColumnGrid = styled.div`
   }
 `;
 
-const Panel = styled.section`
-  background-color: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-`;
-
-const PanelTitle = styled.h2`
-  margin: 0;
-  font-size: 1.0625rem;
-  font-weight: 600;
-  color: #111827;
-`;
-
-const DetailList = styled.dl`
-  margin: 0;
-  display: grid;
-  grid-template-columns: 150px minmax(0, 1fr);
-  gap: 10px 12px;
-  font-size: 0.875rem;
-
-  dt {
-    color: #6b7280;
-    font-weight: 500;
-  }
-
-  dd {
-    margin: 0;
-    color: #111827;
-    font-weight: 600;
-    word-break: break-word;
-  }
-`;
-
-const FormStack = styled.form`
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-`;
-
-const FieldGroup = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-`;
-
-const FieldLabel = styled.label`
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #111827;
-`;
-
-const StyledInput = styled.input`
-  font: inherit;
-  font-size: max(1rem, 0.875rem);
-  min-height: 42px;
-  padding: 8px 12px;
-  border: 1px solid #767676;
-  border-radius: 6px;
-  background-color: #ffffff;
-  color: #111827;
-
-  &:focus-visible {
-    outline: 2px solid #0b57d0;
-    outline-offset: 1px;
-  }
-`;
-
-const ErrorText = styled.span`
-  color: #d32f2f;
-  font-size: 0.75rem;
-`;
-
-const DangerRow = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  padding-top: 8px;
-  border-top: 1px solid #e5e7eb;
-`;
-
 const ProductDetails = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const queryClient = useContext(QueryClientContext);
-  const userSnap = useSnapshot(userStore);
+  const queryClient = useQueryClient();
   const idPrefix = useId();
-  const [statusMessage, setStatusMessage] = useState<{
-    type: 'success' | 'error';
-    text: string;
-  } | null>(null);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const { flash, setFlash, clearFlash } = useFlashMessage();
 
-  const {
-    isLoading,
-    error,
-    data: product,
-    refetch,
-  } = useQuery<BackendProduct>({
-    queryKey: ['product', id],
-    enabled: Boolean(id),
-    queryFn: () => axios.get<BackendProduct>(`/v1/products/${id}`).then((res) => res.data),
-  });
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [quantityDisplay, setQuantityDisplay] = useState<number>(1);
+
+  const { isLoading, error, data: product, refetch } = useProduct(id);
+  useDocumentTitle(product ? product.name : 'Product Details');
 
   const {
     register,
     handleSubmit,
     reset,
     formState: { errors, isSubmitting },
-  } = useForm<EditProductValues>({
+  } = useForm<CheckoutFormValues>({
     mode: 'onBlur',
+    reValidateMode: 'onChange',
     defaultValues: {
-      name: '',
-      price: 0,
-      stripeProductId: '',
+      priceId: '',
+      quantity: 1,
     },
   });
 
   useEffect(() => {
     if (product) {
       reset({
-        name: product.name,
-        price: product.price,
-        stripeProductId: product.stripeProductId ?? '',
+        priceId: product.stripePriceId ?? '',
+        quantity: 1,
       });
     }
   }, [product, reset]);
 
-  const onSaveProduct = async (values: EditProductValues) => {
-    if (!id) return;
-    setStatusMessage(null);
-    const trimmedStripeId = values.stripeProductId.trim();
+  const checkoutTotal =
+    product && Number.isFinite(quantityDisplay) && quantityDisplay >= 1
+      ? product.price * quantityDisplay
+      : (product?.price ?? 0);
+
+  const onCheckoutSubmit = async (values: CheckoutFormValues) => {
+    setCheckoutError(null);
     try {
-      await axios.patch(`/v1/products/${id}`, {
-        name: values.name.trim(),
-        price: Number(values.price),
-        ...(trimmedStripeId ? { stripeProductId: trimmedStripeId } : {}),
+      const response = await axios.post<StripeCheckoutResponse>('/v1/stripe/payments', {
+        priceId: values.priceId.trim(),
+        quantity: Number(values.quantity),
       });
-      await queryClient?.invalidateQueries({ queryKey: ['product', id] });
-      await queryClient?.invalidateQueries({ queryKey: ['productsData'] });
-      await refetch();
-      setStatusMessage({ type: 'success', text: `Product "${values.name}" updated.` });
+
+      if (response.data?.url) {
+        redirectToExternalUrl(response.data.url);
+      } else {
+        setFlash({ type: 'success', text: 'Stripe checkout session created.' });
+      }
     } catch (err) {
-      const msg = axios.isAxiosError(err)
-        ? (err.response?.data?.message ?? 'Failed to update product.')
-        : 'Failed to update product.';
-      setStatusMessage({
-        type: 'error',
-        text: Array.isArray(msg) ? msg.join(', ') : String(msg),
-      });
+      setCheckoutError(extractApiError(err, 'Failed to initiate Stripe checkout.'));
     }
   };
 
   const handleDeleteProduct = async () => {
     if (!id) return;
     setIsDeleting(true);
-    setStatusMessage(null);
     try {
       await axios.delete(`/v1/products/${id}`);
-      await queryClient?.invalidateQueries({ queryKey: ['productsData'] });
-      await queryClient?.invalidateQueries({ queryKey: ['orderData'] });
-      navigate('/products');
-    } catch {
-      setStatusMessage({ type: 'error', text: 'Failed to delete product.' });
+      await queryClient.invalidateQueries({ queryKey: ['products'] });
+      await queryClient.invalidateQueries({ queryKey: ['orders'] });
+      navigate('/products', {
+        state: {
+          flash: {
+            type: 'success',
+            text: `Deleted product "${product?.name ?? id}".`,
+          },
+        },
+      });
+    } catch (err) {
+      setFlash({
+        type: 'error',
+        text: extractApiError(err, 'Failed to delete product.'),
+      });
       setIsDeleting(false);
+      setIsDeleteOpen(false);
     }
   };
 
-  const nameId = `${idPrefix}-product-name`;
-  const priceId = `${idPrefix}-product-price`;
-  const stripeId = `${idPrefix}-product-stripe`;
+  const priceIdInput = `${idPrefix}-stripe-price-id`;
+  const quantityInput = `${idPrefix}-checkout-quantity`;
 
   return (
-    <Container component="section" maxWidth="xl">
-      <Header
-        userName={userSnap.user.name}
-        joinedDate={userSnap.user.joinedDate}
-        onSubmitSearch={(query) => {
-          changeProductSearch(query);
-          navigate('/products');
-        }}
+    <PageWrapper>
+      <Breadcrumbs
+        items={[
+          { label: 'Products', to: '/products' },
+          { label: product ? product.name : 'Product Details' },
+        ]}
       />
 
-      <PageBody>
-        <TopRow>
+      <PageHeaderRow>
+        <PageHeaderText>
           <PageTitle>{product ? product.name : 'Product Details'}</PageTitle>
-          <Button component={SafeLink} to="/products" variant="outlined">
+        </PageHeaderText>
+        <PageHeaderActions>
+          {product && (
+            <>
+              <Button
+                component={Link}
+                to={`/products/${product.id}/edit`}
+                variant="contained"
+                color="primary"
+              >
+                Edit Product
+              </Button>
+              <Button
+                type="button"
+                variant="outlined"
+                color="error"
+                onClick={() => setIsDeleteOpen(true)}
+              >
+                Delete Product
+              </Button>
+            </>
+          )}
+          <Button component={Link} to="/products" variant="outlined" color="secondary">
             Back to Products
           </Button>
-        </TopRow>
+        </PageHeaderActions>
+      </PageHeaderRow>
 
-        {statusMessage && (
-          <Alert
-            severity={statusMessage.type}
-            role={statusMessage.type === 'error' ? 'alert' : 'status'}
-          >
-            {statusMessage.text}
-          </Alert>
-        )}
+      {flash && (
+        <Alert
+          severity={flash.type}
+          role={flash.type === 'error' ? 'alert' : 'status'}
+          onClose={clearFlash}
+        >
+          {flash.text}
+        </Alert>
+      )}
 
-        {isLoading ? (
-          <CircularProgress data-testid="product-details-loading" />
-        ) : error || !product ? (
-          <Alert
-            severity="error"
-            action={
-              <Button size="small" onClick={() => refetch()}>
-                Retry
-              </Button>
-            }
-          >
-            Product could not be loaded.
-          </Alert>
-        ) : (
-          <TwoColumnGrid>
-            <Panel aria-label="Product overview">
-              <PanelTitle>Product Overview</PanelTitle>
-              <DetailList>
-                <dt>Product ID</dt>
-                <dd>{product.id}</dd>
-                <dt>Name</dt>
-                <dd>{product.name}</dd>
-                <dt>Price</dt>
-                <dd>{formatCurrency(product.price)}</dd>
-                <dt>Stripe Product ID</dt>
-                <dd>{product.stripeProductId || 'Not linked'}</dd>
-                <dt>Created</dt>
-                <dd>{product.createdAt ? formatShortDate(product.createdAt) : 'Unknown'}</dd>
-                <dt>Updated</dt>
-                <dd>{product.updatedAt ? formatShortDate(product.updatedAt) : 'Unknown'}</dd>
-              </DetailList>
+      {isLoading ? (
+        <CircularProgress data-testid="product-details-loading" />
+      ) : error || !product ? (
+        <Alert
+          severity="error"
+          action={
+            <Button size="small" onClick={() => void refetch()}>
+              Retry
+            </Button>
+          }
+        >
+          Product could not be loaded.
+        </Alert>
+      ) : (
+        <DetailGrid>
+          <CardPanel aria-label="Product overview">
+            <PanelTitle>Product Overview</PanelTitle>
+            <DetailList>
+              <dt>Product ID</dt>
+              <dd>{product.id}</dd>
+              <dt>Name</dt>
+              <dd>{product.name}</dd>
+              <dt>Price</dt>
+              <dd>{formatCurrency(product.price)}</dd>
+              <dt>Stripe Product ID</dt>
+              <dd>{product.stripeProductId || 'Not linked'}</dd>
+              <dt>Stripe Price ID</dt>
+              <dd>{product.stripePriceId || 'Not linked'}</dd>
+              <dt>Created</dt>
+              <dd>{formatShortDate(product.createdAt)}</dd>
+              <dt>Updated</dt>
+              <dd>{formatShortDate(product.updatedAt)}</dd>
+            </DetailList>
+          </CardPanel>
 
-              <DangerRow>
-                {!confirmingDelete ? (
-                  <Button
-                    type="button"
-                    color="error"
-                    variant="outlined"
-                    onClick={() => setConfirmingDelete(true)}
-                  >
-                    Delete Product
-                  </Button>
+          <CardPanel aria-labelledby={`${idPrefix}-checkout-heading`}>
+            <PanelTitle id={`${idPrefix}-checkout-heading`}>Stripe Checkout</PanelTitle>
+
+            {checkoutError && (
+              <Alert severity="error" role="alert">
+                {checkoutError}
+              </Alert>
+            )}
+
+            <FormStack
+              aria-labelledby={`${idPrefix}-checkout-heading`}
+              noValidate
+              onSubmit={handleSubmit(onCheckoutSubmit)}
+            >
+              <FieldGroup>
+                <FieldLabel htmlFor={priceIdInput}>
+                  Stripe Price ID <span aria-hidden="true">*</span>
+                </FieldLabel>
+                <TextInput
+                  id={priceIdInput}
+                  type="text"
+                  placeholder="price_..."
+                  required
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  aria-invalid={errors.priceId ? 'true' : 'false'}
+                  aria-describedby={
+                    errors.priceId ? `${priceIdInput}-error` : `${priceIdInput}-hint`
+                  }
+                  {...register('priceId', {
+                    required: 'Stripe Price ID is required to start checkout',
+                    validate: (v) =>
+                      v.trim().length > 0 || 'Stripe Price ID is required to start checkout',
+                  })}
+                />
+                {errors.priceId ? (
+                  <FieldError id={`${priceIdInput}-error`}>{errors.priceId.message}</FieldError>
                 ) : (
-                  <>
-                    <Button
-                      type="button"
-                      color="error"
-                      variant="contained"
-                      disabled={isDeleting}
-                      onClick={handleDeleteProduct}
-                    >
-                      {isDeleting ? 'Deleting...' : 'Confirm Delete'}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outlined"
-                      onClick={() => setConfirmingDelete(false)}
-                    >
-                      Cancel
-                    </Button>
-                  </>
+                  <FieldHint id={`${priceIdInput}-hint`}>
+                    {product.stripePriceId
+                      ? 'Pre-filled from this product record.'
+                      : 'Enter a Stripe Price ID or link one via Edit Product.'}
+                  </FieldHint>
                 )}
-              </DangerRow>
-            </Panel>
+              </FieldGroup>
 
-            <Panel aria-labelledby={`${idPrefix}-edit-product-title`}>
-              <PanelTitle id={`${idPrefix}-edit-product-title`}>Edit Product</PanelTitle>
-              <FormStack
-                aria-labelledby={`${idPrefix}-edit-product-title`}
-                noValidate
-                onSubmit={handleSubmit(onSaveProduct)}
-              >
-                <FieldGroup>
-                  <FieldLabel htmlFor={nameId}>Product Name</FieldLabel>
-                  <StyledInput
-                    id={nameId}
-                    type="text"
-                    required
-                    aria-invalid={errors.name ? 'true' : 'false'}
-                    {...register('name', { required: 'Product name is required' })}
-                  />
-                  {errors.name && <ErrorText>{errors.name.message}</ErrorText>}
-                </FieldGroup>
+              <FieldGroup>
+                <FieldLabel htmlFor={quantityInput}>
+                  Quantity <span aria-hidden="true">*</span>
+                </FieldLabel>
+                <TextInput
+                  id={quantityInput}
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  required
+                  aria-invalid={errors.quantity ? 'true' : 'false'}
+                  aria-describedby={errors.quantity ? `${quantityInput}-error` : undefined}
+                  {...register('quantity', {
+                    valueAsNumber: true,
+                    required: 'Quantity is required',
+                    min: { value: 1, message: 'Quantity must be at least 1' },
+                    onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
+                      const nextQty = Number(event.target.value);
+                      if (Number.isFinite(nextQty) && nextQty >= 1) {
+                        setQuantityDisplay(nextQty);
+                      }
+                    },
+                  })}
+                />
+                {errors.quantity && (
+                  <FieldError id={`${quantityInput}-error`}>{errors.quantity.message}</FieldError>
+                )}
+              </FieldGroup>
 
-                <FieldGroup>
-                  <FieldLabel htmlFor={priceId}>Price (USD)</FieldLabel>
-                  <StyledInput
-                    id={priceId}
-                    type="number"
-                    step="0.01"
-                    min="0.01"
-                    required
-                    aria-invalid={errors.price ? 'true' : 'false'}
-                    {...register('price', {
-                      valueAsNumber: true,
-                      required: 'Price is required',
-                      min: { value: 0.01, message: 'Price must be positive' },
-                    })}
-                  />
-                  {errors.price && <ErrorText>{errors.price.message}</ErrorText>}
-                </FieldGroup>
-
-                <FieldGroup>
-                  <FieldLabel htmlFor={stripeId}>Stripe Product ID (optional)</FieldLabel>
-                  <StyledInput
-                    id={stripeId}
-                    type="text"
-                    placeholder="prod_..."
-                    aria-invalid="false"
-                    {...register('stripeProductId')}
-                  />
-                </FieldGroup>
-
-                <Button type="submit" variant="contained" disabled={isSubmitting}>
-                  {isSubmitting ? 'Saving...' : 'Save Product Changes'}
+              <div>
+                <Button type="submit" variant="contained" color="primary" disabled={isSubmitting}>
+                  {isSubmitting
+                    ? 'Redirecting to Stripe...'
+                    : `Pay ${formatCurrency(checkoutTotal)} with Stripe`}
                 </Button>
-              </FormStack>
-            </Panel>
-          </TwoColumnGrid>
-        )}
-      </PageBody>
-    </Container>
+              </div>
+            </FormStack>
+          </CardPanel>
+        </DetailGrid>
+      )}
+
+      <ConfirmDialog
+        open={isDeleteOpen}
+        title={`Delete "${product?.name ?? 'this product'}"?`}
+        description="This permanently removes the product from the database. This action cannot be undone."
+        confirmLabel="Delete Product"
+        isConfirming={isDeleting}
+        onConfirm={() => void handleDeleteProduct()}
+        onCancel={() => setIsDeleteOpen(false)}
+      />
+    </PageWrapper>
   );
 };
 
